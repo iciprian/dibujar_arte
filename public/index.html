@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dibujar Arte</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/vendor/model-viewer.min.js"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>Dibujar Arte</h1>
+    <span class="tagline">describe a character → get a 3D model</span>
+  </header>
+
+  <div id="key-banner" class="banner" hidden>
+    No fal.ai key found. Copy <code>.env.example</code> to <code>.env</code>, paste your key from
+    <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noreferrer">fal.ai/dashboard/keys</a>, then restart with <code>npm start</code>.
+  </div>
+
+  <main class="layout">
+    <!-- Left: create -->
+    <section class="panel create">
+      <h2><span class="step">1</span> Describe your character</h2>
+      <textarea id="description" rows="5" placeholder="A small friendly forest gnome with a big red mushroom hat, green coat, brown boots and a lantern, cartoon style"></textarea>
+      <label class="check"><input type="checkbox" id="apose" checked> Neutral A-pose <small>(best for rigging/animation)</small></label>
+      <div class="row">
+        <label class="field grow">Image model
+          <select id="image-model"></select>
+        </label>
+        <label class="field">Variations
+          <select id="count">
+            <option>1</option><option selected>2</option><option>3</option><option>4</option>
+          </select>
+        </label>
+      </div>
+      <button id="btn-concepts" class="primary">Draw concepts</button>
+      <p id="concepts-error" class="error" hidden></p>
+
+      <div id="concepts-block" hidden>
+        <h2><span class="step">2</span> Pick one and make it 3D</h2>
+        <div id="concepts" class="concepts"></div>
+        <div class="row">
+          <label class="field grow">3D engine
+            <select id="engine"></select>
+          </label>
+        </div>
+        <label class="check" id="pbr-wrap"><input type="checkbox" id="pbr"> PBR materials <small>(metal/roughness/normal maps)</small></label>
+        <button id="btn-model" class="primary" disabled>Make 3D</button>
+        <p id="model-error" class="error" hidden></p>
+      </div>
+    </section>
+
+    <!-- Right: view + export -->
+    <section class="panel stage">
+      <div class="viewer">
+        <model-viewer id="viewer" camera-controls auto-rotate auto-rotate-delay="1500" shadow-intensity="1"
+          environment-image="neutral" tone-mapping="neutral" interaction-prompt="none" hidden></model-viewer>
+        <div id="viewer-placeholder" class="placeholder">
+          <img id="placeholder-img" alt="" hidden>
+          <p id="placeholder-text">Your 3D model will appear here.</p>
+        </div>
+      </div>
+
+      <div id="export" class="export" hidden>
+        <h2><span class="step">3</span> Export</h2>
+        <div class="row export-row">
+          <label class="field">Size
+            <span class="unit-input"><input id="size" type="number" min="0.1" step="0.1" value="15"><span>cm</span></span>
+          </label>
+          <label class="field">measured along
+            <select id="axis">
+              <option value="height">Height</option>
+              <option value="width">Width</option>
+              <option value="depth">Depth</option>
+              <option value="longest">Longest side</option>
+            </select>
+          </label>
+          <a id="btn-download" class="button primary" download>Download .glb</a>
+        </div>
+        <p id="dims" class="dims"></p>
+      </div>
+    </section>
+  </main>
+
+  <section class="library-wrap">
+    <h2>Library</h2>
+    <p id="library-empty" class="muted">Nothing yet. Models you make are saved in the <code>library/</code> folder.</p>
+    <div id="library" class="library"></div>
+  </section>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
