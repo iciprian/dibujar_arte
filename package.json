@@ -1,0 +1,36 @@
+{
+  "name": "dibujar_arte",
+  "version": "1.0.0",
+  "description": "Describe a character, get a 3D model (GLB) at the size you want. Powered by fal.ai.",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --watch --env-file-if-exists=.env server.js",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iciprian/dibujar_arte.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/iciprian/dibujar_arte/issues"
+  },
+  "homepage": "https://github.com/iciprian/dibujar_arte#readme",
+  "dependencies": {
+    "@fal-ai/client": "^1.10.1",
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "@google/model-viewer": "^4.4.0",
+    "draco3dgltf": "^1.5.9",
+    "express": "^5.3.0",
+    "meshoptimizer": "^1.3.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}
