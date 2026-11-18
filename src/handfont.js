@@ -243,7 +243,7 @@ function readRows(img, label, rows, rowsItems) {
           // letter's strokes (too faint to be found as a piece) is kept
           if (label[src] >= 0 && !ids.has(label[src])) continue;
           if (label[src] < 0 && !nearOwn(src)) continue;
-          const a = Math.min(1, Math.max(0, (img.ink[src] - 0.05) / 0.3));
+          const a = Math.min(1, Math.max(0, (img.ink[src] - 0.07) / 0.24)); // light pencil counts, without fattening the strokes
           const o = (y * gw + x) * 4;
           rgba[o] = img.rgb[src * 3]; rgba[o + 1] = img.rgb[src * 3 + 1]; rgba[o + 2] = img.rgb[src * 3 + 2];
           rgba[o + 3] = Math.round(a * 255);
@@ -321,6 +321,9 @@ async function finishGlyph(g, scale, { mode, bold = 0, condense = 1, edge = null
   for (let y = 0; y < th; y++) data.copy(big, ((y + pad) * W + pad) * 4, y * tw * 4, (y + 1) * tw * 4);
   data = big;
   g = { ...g, top: g.top - pad / scale };
+  // a solid stroke: spots where the pencil was lighter (the O's top and
+  // bottom) are filled from the stroke around them, the outline kept
+  data = closeGaps(data, W, H, Math.max(2, Math.round(Math.min(tw, th) * 0.04)));
   if (bold) data = growAlpha(data, W, H, bold);
   if (soft) data = await softEdges(data, W, H, soft);
   const fill = new Uint8Array(W * H);
@@ -347,6 +350,31 @@ async function finishGlyph(g, scale, { mode, bold = 0, condense = 1, edge = null
   return trimGlyph(g, scale, data, W, H);
 }
 
+/** Fills light spots and small gaps inside strokes: grow (round brush), then
+ *  shrink back the same amount; only alpha shrinks, so colours stay. */
+function closeGaps(data, w, h, r) {
+  const before = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) before[i] = data[i * 4 + 3];
+  growAlpha(data, w, h, r);
+  const grown = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) grown[i] = data[i * 4 + 3];
+  const offs = [];
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r + r * 0.6) offs.push([dx, dy]);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let m = 255;
+    for (const [dx, dy] of offs) {
+      const xx = x + dx; const yy = y + dy;
+      const v = (xx < 0 || yy < 0 || xx >= w || yy >= h) ? 0 : grown[yy * w + xx];
+      if (v < m) { m = v; if (!m) break; }
+    }
+    // only pencil that was there gets stronger; bare paper (the hole of an
+    // e, an a, a B) stays empty, and nothing gets weaker
+    const b0 = before[y * w + x];
+    data[(y * w + x) * 4 + 3] = b0 > 8 ? Math.max(b0, m) : b0;
+  }
+  return data;
+}
+
 /** A finished glyph made smaller, standing on the same writing line. */
 async function shrinkGlyph(g, k) {
   const w = Math.max(1, Math.round(g.w * k)); const h = Math.max(1, Math.round(g.h * k));
@@ -362,7 +390,7 @@ async function softEdges(data, w, h, sigma) {
   if (blurred.length !== w * h) throw new Error(`softEdges: ${blurred.length} bytes for ${w}x${h}`);
   for (let i = 0; i < w * h; i++) {
     // firm the middle, keep a soft rim: smoothstep on the blurred alpha
-    const t = Math.min(1, Math.max(0, (blurred[i] / 255 - 0.12) / 0.6));
+    const t = Math.min(1, Math.max(0, (blurred[i] / 255 - 0.3) / 0.32)); // a firm edge with a thin soft rim: no fuzzy halo
     data[i * 4 + 3] = Math.round(255 * t * t * (3 - 2 * t));
   }
   return data;
@@ -587,6 +615,19 @@ async function symbols(map, m, { stroke: leaning, colour, icons = {} }) {
       return { g, cx: cx - dir * Math.cos(rad) * head * 0.45, cy: cy + Math.sin(rad) * head * 0.45 };
     }))),
   ];
+  // ⇒ and ⊕ from the artist's own drawn symbols when she drew them: her = with
+  // the head of her →, her O with her + inside
+  const eq = map.get('=');
+  const arrow = map.get('→');
+  if (eq && arrow) {
+    const headW = Math.round(arrow.w * 0.42);
+    const headImg = await sharp(arrow.data, { raw: { width: arrow.w, height: arrow.h, channels: 4 } })
+      .extract({ left: arrow.w - headW, top: 0, width: headW, height: arrow.h }).raw().toBuffer({ resolveWithObject: true });
+    const head = { w: headImg.info.width, h: headImg.info.height, data: Buffer.from(headImg.data) };
+    const bars = await resizeG(eq, arrow.w * 0.72, eq.h);
+    const headBig = await resizeG(head, head.w * 0.8, Math.max(head.h * 0.8, eq.h * 1.5));
+    add(compose('⇒', [{ g: bars, x: 0, y: eq.rise }, { g: headBig, x: bars.w - headBig.w * 0.45, y: eq.rise + (headBig.h - eq.h) / 2 }]));
+  }
   add(composeC('¬', [{ g: await H(em * 0.36), cx: 0, cy: mid + em * 0.05 }, { g: await bar(st, em * 0.14, 0), cx: em * 0.17, cy: mid - em * 0.02 }]));
   const up = em * 0.42;
   add(composeC('∧', [{ g: await slant(up, 22), cx: -em * 0.08, cy: mid }, { g: await slant(up, -22), cx: em * 0.08, cy: mid }]));
@@ -605,7 +646,14 @@ async function symbols(map, m, { stroke: leaning, colour, icons = {} }) {
     const { data, info } = await sharp(E.data, { raw: { width: E.w, height: E.h, channels: 4 } }).flop().raw().toBuffer({ resolveWithObject: true });
     add({ ch: '∃', w: info.width, h: info.height, data: Buffer.from(data), rise: E.rise });
   }
-  if (o) {
+  const ring = map.get('o') || map.get('O'); // her round o
+  const plus = map.get('+');
+  if (ring && plus) {
+    const o = await resizeG(ring, m.size * 0.5, m.size * 0.5);
+    const p = await resizeG(plus, o.w * 0.62, o.h * 0.62);
+    add(composeC('⊕', [{ g: o, cx: 0, cy: m.xH * 0.55 }, { g: p, cx: 0, cy: m.xH * 0.55 }]));
+  }
+  if (o && !map.has('⊕')) {
     const small = em * 0.2;
     add(compose('⊕', [{ g: o, x: 0, y: o.rise }, { g: await bar(st, small, 0), x: o.w / 2 - st.w / 2, y: o.rise * 0.5 + small / 2 }, { g: await H(small), x: o.w / 2 - small / 2, y: o.rise * 0.5 + st.w / 2 }]));
   }
