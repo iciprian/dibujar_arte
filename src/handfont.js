@@ -98,12 +98,35 @@ export async function readSheet(photo, rows, { rowMode = 'letters' } = {}) {
     }
   }
   const medW = median(bigs.map((c) => c.x1 - c.x0));
+  // the colour of a piece (its inked pixels): a dot goes with letters of its own colour
+  const colourOf = (c) => {
+    let r = 0; let g = 0; let b = 0; let n = 0;
+    for (let y = c.y0; y <= c.y1; y++) for (let x = c.x0; x <= c.x1; x++) {
+      const i = y * w + x;
+      if (label[i] !== c.id || img.ink[i] < 0.3) continue;
+      r += img.rgb[i * 3]; g += img.rgb[i * 3 + 1]; b += img.rgb[i * 3 + 2]; n++;
+    }
+    return n ? [r / n, g / n, b / n] : [128, 128, 128];
+  };
+  const hueDist = (a, b) => {
+    // compare colour without brightness: grey pencil vs blue vs red marker
+    const na = a.map((v) => v - (a[0] + a[1] + a[2]) / 3); const nb = b.map((v) => v - (b[0] + b[1] + b[2]) / 3);
+    return Math.hypot(na[0] - nb[0], na[1] - nb[1], na[2] - nb[2]);
+  };
+  for (const r of bands) {
+    const cols = r.items.filter(isBig).map(colourOf);
+    r.colour = [0, 1, 2].map((k) => median(cols.map((c) => c[k])));
+  }
   for (const c of pieces.filter((x) => !isBig(x))) {
     let best = null; let bestD = Infinity;
+    const col = colourOf(c);
     for (const r of bands) {
       const d = c.cy < r.y0 ? r.y0 - c.cy : c.cy > r.y1 ? c.cy - r.y1 : 0;
-      if (d < bestD) { bestD = d; best = r; }
+      // rows within reach compete on colour; a far row only if nothing is near
+      const score = d + (d < medH * 1.6 ? hueDist(col, r.colour) * 2.5 : 1e6);
+      if (score < bestD) { bestD = score; best = r; }
     }
+    if (!best) continue;
     // a speck far from any letter of its row is dirt on the paper
     const nearX = Math.min(...best.items.filter(isBig).map((x) => Math.max(0, x.x0 - c.x1, c.x0 - x.x1)));
     // a drawn full stop is a solid blob; dirt is a faint speck
@@ -214,7 +237,8 @@ function readRows(img, label, rows, rowsItems) {
         }
       }
       if ((row.drop || '').includes(chars[i])) return; // read only to keep the count right
-      glyphs.push({ ch: chars[i], set: row.set, kind: row.kind, rgba, w: gw, h: gh, top: y0, bottom: y0 + gh, baseline });
+      const body = g.parts.reduce((a, b) => (b.area > a.area ? b : a));
+      glyphs.push({ ch: chars[i], set: row.set, kind: row.kind, rgba, w: gw, h: gh, top: y0, bottom: y0 + gh, baseline, bodyH: body.y1 - body.y0 });
     });
   });
   return { glyphs, problems };
@@ -231,6 +255,11 @@ export function scales(glyphs, m) {
     const xH = median(small.map((g) => g.baseline - g.top - 3));
     out[`${set}/upper`] = capH ? m.capH / capH : null;
     out[`${set}/lower`] = xH ? m.xH / xH : null;
+    if (!xH) {
+      // only accented small letters (a sheet with one ó): their body is x-height
+      const acc = by(set, 'lower', (c) => 'áéíóú'.includes(c));
+      if (acc.length) out[`${set}/lower`] = m.xH / median(acc.map((g) => g.bodyH));
+    }
   }
   // a sheet of symbols: everything on it follows its digits (as tall as capitals)
   for (const set of new Set(glyphs.map((g) => g.set))) {
@@ -303,6 +332,13 @@ async function finishGlyph(g, scale, { mode, bold = 0, condense = 1, edge = null
     }
   }
   return trimGlyph(g, scale, data, W, H);
+}
+
+/** A finished glyph made smaller, standing on the same writing line. */
+async function shrinkGlyph(g, k) {
+  const w = Math.max(1, Math.round(g.w * k)); const h = Math.max(1, Math.round(g.h * k));
+  const { data } = await sharp(g.data, { raw: { width: g.w, height: g.h, channels: 4 } }).resize(w, h, { kernel: 'lanczos3' }).raw().toBuffer({ resolveWithObject: true });
+  return { ...g, w, h, data: Buffer.from(data), rise: Math.round(g.rise * k) };
 }
 
 /** Rounder, softer stroke edges: the alpha is blurred a little and firmed up again. */
@@ -444,6 +480,15 @@ async function synthesize(map, m, { stroke, dot, upperColour, lowerColour }) {
     const stem = await trimTop(i, 0.28); // cut the dot off
     const acc = accFor(i);
     add(compose('í', [{ g: stem, x: 0, y: stem.rise }, { g: acc, x: (stem.w - acc.w) / 2 + stem.w * 0.1, y: stem.rise + m.size * 0.06 + acc.h }]));
+  }
+  const N = map.get('N');
+  if (N && !map.has('Ñ')) {
+    // a tilde: a short wavy stroke made of two turned strokes
+    const a1 = await resizeG(await rasterRotate(stroke, 70), m.size * 0.12, m.size * 0.07);
+    const a2 = await resizeG(await rasterRotate(stroke, 110), m.size * 0.12, m.size * 0.07);
+    const tl = upperColour ? [tint(a1, upperColour), tint(a2, upperColour)] : [a1, a2];
+    const y = N.rise + m.size * 0.06 + a1.h;
+    add(compose('Ñ', [{ g: N, x: 0, y: N.rise }, { g: tl[0], x: N.w / 2 - a1.w, y }, { g: tl[1], x: N.w / 2 - 2, y }]));
   }
   const u = map.get('u');
   if (u) {
@@ -688,6 +733,19 @@ export async function buildFonts(cfg) {
       if (map.has(g.ch)) continue;
       map.set(g.ch, await finishGlyph(g, sc[`${g.set}/${g.kind}`], opts));
     }
+    // letters drawn thinner than their neighbours get fuller: the same stroke for all
+    if (font.mode === 'mask' || font.evenStrokes) {
+      const th = new Map([...map].map(([c, g]) => [c, thickness(g)]));
+      const letters = [...th].filter(([c]) => /[a-zA-Z]/.test(c)).map(([, t]) => t);
+      const target = median(letters) * 0.85;
+      for (const g of mine) {
+        const t = th.get(g.ch);
+        if (t && t < target) {
+          const extra = Math.max(1, Math.round((target - t) / 2));
+          map.set(g.ch, await finishGlyph(g, sc[`${g.set}/${g.kind}`], { ...opts, bold: (opts.bold || 0) + extra }));
+        }
+      }
+    }
     // characters from other sheets (symbols in another pen): their strokes
     // are thickened to match the letters'
     const more = glyphs.filter((g) => extra.has(g.set) && !map.has(g.ch));
@@ -704,8 +762,21 @@ export async function buildFonts(cfg) {
       }
       void letters;
     }
+    // punctuation drawn much taller than the letters is brought down to their size
+    for (const ch of '!?¡¿') {
+      const g = map.get(ch);
+      if (g && g.h > m.capH * 1.18) map.set(ch, await shrinkGlyph(g, (m.capH * 1.1) / g.h));
+    }
     // strokes for the made-up characters come from this font's own "!" and "."
-    const bang = map.get('!'); const dot = map.get('.');
+    // (or another set's, for a font of capitals only)
+    let bang = map.get('!'); let dot = map.get('.');
+    if ((!bang || !dot) && font.strokesFrom) {
+      const from = (c) => glyphs.find((g) => g.set === font.strokesFrom && g.ch === c);
+      const b = from('!'); const d = from('.');
+      const tint = { ...opts, mode: font.mode };
+      if (b) bang = await finishGlyph(b, sc[`${b.set}/${b.kind}`], tint);
+      if (d) dot = await finishGlyph(d, sc[`${d.set}/${d.kind}`], tint);
+    }
     if (bang && dot) {
       const colours = font.mode === 'colour' ? {
         upperColour: meanColour([...map.values()].filter((g) => /[A-Z]/.test(g.ch))),
@@ -713,6 +784,17 @@ export async function buildFonts(cfg) {
       } : {};
       await synthesize(map, m, { stroke: strokeOf(bang), dot, ...colours });
       await symbols(map, m, { stroke: strokeOf(bang), colour: colours.upperColour, icons: cfg.icons || {} });
+    }
+    // letters only (a font for special words): no made-up signs or punctuation
+    if (font.lettersOnly) {
+      for (const ch of [...map.keys()]) if (!/\p{L}/u.test(ch)) map.delete(ch);
+    }
+    // a font of capitals only: small letters are the same capitals
+    if (font.lowerAsUpper) {
+      for (const [ch, g] of [...map]) {
+        const lo = ch.toLowerCase();
+        if (lo !== ch && !map.has(lo)) map.set(lo, { ...g, ch: lo });
+      }
     }
     results.push({ name: font.name, condense: condense.toFixed(2), ...(await writeFont(cfg.out, font.name, map, m)), chars: [...map.keys()].join('') });
   }
