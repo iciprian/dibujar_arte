@@ -9,6 +9,7 @@ import { AXES, measureGlb, resizeGlb } from './src/glb.js';
 import {
   LIBRARY_DIR, deleteEntry, download, entryDir, isValidId, listMeta, newId, readMeta, saveMeta,
 } from './src/library.js';
+import { godeleaRoutes } from './src/godelea-routes.js';
 
 // fal's client reads FAL_KEY from the environment (loaded from .env by `npm start`).
 const PORT = Number(process.env.PORT) || 3737;
@@ -190,6 +191,9 @@ app.get('/api/models/:id/export', async (req, res) => {
   const sizeLabel = String(Math.round(sizeCm * 100) / 100).replace('.', '_');
   res.type('model/gltf-binary').attachment(`${slug}_${sizeLabel}cm.glb`).send(Buffer.from(glb));
 });
+
+// ---------- hand drawings -> Godelea pictures (drawings.html) ----------
+godeleaRoutes(app, HttpError);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 

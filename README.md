@@ -29,6 +29,21 @@ The exported model is scaled exactly (glTF uses metres, so 15 cm = 0.15). It is 
 
 Everything you make is saved in `library/<id>/` (`model.glb`, `concept.png`, `meta.json`).
 
+## Drawings → Godelea (2D)
+
+Turns phone photos of drawings on paper into the exact picture files of the game Godelea (`../mathrpg/godelea`). No AI: the photo is only cleaned up. Shadows and paper are removed, colours are brightened, the background becomes transparent, and the picture is scaled to the game's size. Free.
+
+Open <http://127.0.0.1:3737/drawings.html>:
+
+- **Game pictures**: every picture the game uses (from its `ART_MANIFEST.json`), today's version next to your drawing. Orange = to confirm, faded = not drawn yet. Click one to change it.
+- **Photos**: the photos in the Drive folder «godelea arte». Add new ones with *Add photo…*. Click a photo, then a drawing on it (or drag a box around it). Then choose which game picture it is, and turn or strengthen it if needed. You see it at real size before saving.
+- **Islands**: the map terrain tiles put together, to check they join.
+- **Check** runs the game's own `tools/check_art.py`. **Install in Godelea** copies the good pictures into the game.
+
+Animations: the game wants strips of 16–49 frames. With one drawing, it is repeated. With a few drawings, each one is held to fill the strip.
+
+Which drawing is which picture is saved in `drawings/godelea.json`, and the results go into `library/godelea/art/`. `node tools/godelea.js` rebuilds them all, plus `library/godelea/review.jpg`. More in [GODELEA.md](GODELEA.md).
+
 ## Costs (fal.ai, Nov 2026)
 
 | Step | Model | Price |

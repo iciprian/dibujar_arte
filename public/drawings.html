@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dibujar Arte · Drawings</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/drawings.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Dibujar Arte</h1>
+    <nav class="tabs-nav"><a href="/">3D models</a><a href="/drawings.html" class="on">Drawings → Godelea</a></nav>
+  </header>
+
+  <div class="d-bar">
+    <div class="seg" role="tablist">
+      <button data-view="pictures" class="on">Game pictures</button>
+      <button data-view="photos">Photos</button>
+      <button data-view="islands">Islands</button>
+    </div>
+    <span id="summary" class="muted"></span>
+    <span class="grow"></span>
+    <label class="check"><input type="checkbox" id="only-todo"> Only to confirm / missing</label>
+    <button id="btn-check">Check</button>
+    <button id="btn-install" class="primary">Install in Godelea</button>
+  </div>
+  <pre id="check-out" class="check-out" hidden></pre>
+
+  <main>
+    <section id="view-pictures"></section>
+
+    <section id="view-photos" hidden>
+      <div class="photo-tools">
+        <label class="button">Add photo… <input type="file" id="upload" accept="image/*" multiple hidden></label>
+        <span class="muted">Photos live in <code id="photos-dir"></code>. Click a photo, then a drawing on it.</span>
+      </div>
+      <div id="photos" class="photos"></div>
+    </section>
+
+    <section id="view-islands" hidden>
+      <p class="muted">Each island is built from one terrain's nine tiles on the sea, the way the map draws it. Top: your drawings. Bottom: the game now.</p>
+      <div id="islands" class="islands"></div>
+    </section>
+  </main>
+
+  <!-- editor: one photo, its drawings, and where the chosen one goes -->
+  <div id="editor" class="editor" hidden>
+    <div class="ed-photo">
+      <div class="ed-head">
+        <strong id="ed-name"></strong>
+        <label class="check"><input type="checkbox" id="ed-fine"> Small drawings close together</label>
+        <span class="muted">Click a drawing, or drag a box around it.</span>
+        <span class="grow"></span>
+        <button id="ed-close">Close</button>
+      </div>
+      <div id="ed-stage" class="ed-stage">
+        <img id="ed-img" alt="">
+        <svg id="ed-svg"></svg>
+      </div>
+    </div>
+    <aside class="ed-side">
+      <label class="field">Game picture
+        <select id="ed-target"></select>
+      </label>
+      <p id="ed-rules" class="muted small"></p>
+      <div class="row">
+        <span>Turn</span>
+        <button data-rot="-90">↺ 90°</button><button data-rot="-5">↺ 5°</button>
+        <button data-rot="5">↻ 5°</button><button data-rot="90">↻ 90°</button>
+        <span id="ed-rot" class="muted"></span>
+      </div>
+      <label class="field">Pencil strength <span id="ed-str-val" class="muted"></span>
+        <input type="range" id="ed-strength" min="0" max="3" step="0.1" value="0">
+      </label>
+      <div class="ed-compare">
+        <figure><figcaption>Game now</figcaption><div class="chk"><img id="ed-old" alt=""></div></figure>
+        <figure><figcaption>Your drawing</figcaption><div class="chk"><img id="ed-new" alt=""></div></figure>
+      </div>
+      <figure class="ed-real"><figcaption>Real size</figcaption><div class="chk"><img id="ed-real" alt=""></div></figure>
+      <p id="ed-error" class="error" hidden></p>
+      <div class="row">
+        <button id="ed-save" class="primary" disabled>Save</button>
+        <button id="ed-remove" class="danger-btn" hidden>Remove</button>
+      </div>
+    </aside>
+  </div>
+
+  <script type="module" src="/drawings.js"></script>
+</body>
+</html>
