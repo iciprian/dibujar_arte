@@ -238,7 +238,8 @@ export async function buildPicture(project, pic) {
     // text goes on these: never see-through, the gaps become white paper
     png = await sharp(png).flatten({ background: '#fffdf8' }).ensureAlpha().png().toBuffer();
   }
-  if (pic.file.startsWith('icons/')) png = await thicken(png, Math.max(1, Math.round(entry.width / 45)));
+  const grow = pic.thicken ?? Math.max(1, Math.round(entry.width / 45));
+  if (pic.file.startsWith('icons/') && grow) png = await thicken(png, grow);
   const tone = pic.tone ?? TONES[pic.file] ?? (pic.file.startsWith('map/terrain_snow_') ? SNOW : null);
   return tone ? retone(png, tone) : png;
 }
