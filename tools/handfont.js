@@ -58,11 +58,12 @@ const OACUTE = { photo: '1795014966353.jpg', rowMode: 'gaps', rows: [{ set: 'oo'
 // their own ¡ ! ?, a tilde (for Ñ) and an accent (for Á É Í Ó Ú); photographed
 // sideways. (˜ and ´ name the drawn tilde and accent; they are not kept.)
 const FUN = {
-  photo: '1795015766430.jpg',
+  photo: '1795016536954.jpg',
   rotate: 270,
   rows: [
     { set: 'fun', kind: 'upper', chars: 'ABCDEFGH' },
-    { set: 'fun', kind: 'upper', chars: 'IJKLMNO˜' },
+    // the artist's new, friendlier I comes first; the old one (İ here) is left out
+    { set: 'fun', kind: 'upper', chars: 'IİJKLMNO˜', drop: 'İ' },
     { set: 'fun', kind: 'upper', chars: 'PQRSTUV´' },
     { set: 'fun', kind: 'upper', chars: 'WXYZ¡!?' },
   ],
