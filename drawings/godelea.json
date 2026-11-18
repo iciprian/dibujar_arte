@@ -79,7 +79,7 @@
     {"file": "map/node_extra.png", "photo": "IMG_20261117_183909.jpg", "box": [1292, 292, 184, 168]},
     {"file": "map/node_lesson.png", "photo": "IMG_20261117_183909.jpg", "box": [940, 284, 192, 180]},
     {"file": "map/node_level.png", "photo": "IMG_20261117_183909.jpg", "box": [620, 296, 208, 184]},
-    {"file": "backgrounds/title.png", "photo": "IMG_20261118_111255.jpg", "box": [24, 160, 1660, 2110], "size": [1080, 1373]},
+    {"file": "backgrounds/title.png", "photo": "IMG_20261118_115003.jpg", "box": [120, 110, 1830, 3850], "size": [1080, 2272], "gentle": true, "veil": 0.42},
     {"file": "backgrounds/game.png", "photo": "IMG_20261117_183749.jpg", "box": [451, 311, 2580, 1670], "rotate": 90},
     {"file": "map/terrain_grass_b.png", "photo": "IMG_20261117_183900.jpg", "box": [320, 720, 280, 340]},
     {"file": "map/terrain_grass_bl.png", "photo": "IMG_20261117_183900.jpg", "box": [688, 740, 224, 264]},

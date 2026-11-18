@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 
-import { cleanDrawing, fitToCanvas } from './drawing.js';
+import { cleanDrawing, fitToCanvas, whiteBalanceCrop } from './drawing.js';
 
 const home = (p) => p.replace(/^~(?=\/)/, os.homedir());
 
@@ -234,7 +234,8 @@ export async function buildPicture(project, pic) {
   const box = toBox(pic.box);
   const how = placement({ file: pic.file });
   const opaque = how.place === 'cover';
-  let clean = await cleanDrawing(photo, {
+  // "gentle": a background in soft crayon: only the paper made white
+  let clean = pic.gentle ? await whiteBalanceCrop(photo, box) : await cleanDrawing(photo, {
     box, rotate: pic.rotate || 0, opaque, close: pic.close, fill: pic.fill ?? !pic.file.startsWith('title/'), pad: opaque ? 0 : undefined,
     strength: pic.strength ?? strength(pic.file),
   });
@@ -280,6 +281,11 @@ export async function buildPicture(project, pic) {
   }
   const grow = pic.thicken ?? Math.max(1, Math.round(entry.width / 45));
   if (pic.file.startsWith('icons/') && grow) png = await thicken(png, grow);
+  if (pic.veil) {
+    // "veil": a light peach layer over it, so the logo and buttons stand in front
+    const m = await sharp(png).metadata();
+    png = await sharp(png).composite([{ input: { create: { width: m.width, height: m.height, channels: 4, background: { r: 255, g: 250, b: 244, alpha: pic.veil } } } }]).png().toBuffer();
+  }
   const tone = pic.tone ?? TONES[pic.file]
     ?? (pic.file.startsWith('map/terrain_snow_') ? SNOW : pic.file.startsWith('map/terrain_') ? GROUND : null);
   if (pic.file.startsWith('scenery/') || pic.file.startsWith('characters/')) png = await halo(png, Math.max(3, Math.round(entry.height / 40)));

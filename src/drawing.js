@@ -514,3 +514,24 @@ export async function inkImage(input, { maxSide = 2400 } = {}) {
 }
 
 export { components as connectedComponents, dilate as dilateMask };
+
+// ---------- backgrounds: gentle cleanup ----------
+
+/**
+ * A crop of the photo with only its paper made white (one correction for the
+ * whole crop). Unlike cleanDrawing it keeps light crayon at its colour, which
+ * suits full-screen backgrounds drawn in soft crayon.
+ */
+export async function whiteBalanceCrop(input, box) {
+  const { data, info } = await sharp(input).extract({ left: box.x, top: box.y, width: box.w, height: box.h })
+    .raw().toBuffer({ resolveWithObject: true });
+  const n = info.width * info.height; const ch = info.channels;
+  const lum = [];
+  for (let i = 0; i < n; i += 7) lum.push([data[i * ch] + data[i * ch + 1] + data[i * ch + 2], i]);
+  lum.sort((a, b) => b[0] - a[0]);
+  const top = lum.slice(0, Math.max(10, Math.floor(lum.length * 0.03))); // the brightest 3% is paper
+  const paper = [0, 1, 2].map((c) => top.reduce((s, [, i]) => s + data[i * ch + c], 0) / top.length);
+  const out = Buffer.alloc(n * 3);
+  for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) out[i * 3 + c] = Math.min(255, Math.round((data[i * ch + c] * 252) / paper[c]));
+  return sharp(out, { raw: { width: info.width, height: info.height, channels: 3 } }).png().toBuffer();
+}
