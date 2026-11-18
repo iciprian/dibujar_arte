@@ -21,25 +21,24 @@ const project = await loadProject('drawings/godelea.json');
 const SHEETS = [
   {
     photo: 'IMG_20261118_141347.jpg', rotate: 270,
+    // which drawing is which: the artist's answers on the map-pieces page
     parts: {
-      'map/road.png': [691, 99, 158, 237],
-      'map/road_2.png': [1338, 56, 229, 234],
-      'map/pond.png': [1801, 65, 505, 271],
-      'board/holder.png': [2472, 144, 339, 361],
-      'board/button_and.png': [1501, 384, 243, 254],
-      'board/button_or.png': [1798, 378, 237, 246],
-      'map/field_1.png': [1761, 790, 421, 435],
-      'map/field_2.png': [2290, 770, 590, 420],
-      'map/street_v_cross.png': [169, 917, 231, 590],
-      'map/street_v.png': [663, 895, 223, 593],
-      'map/lava_1.png': [1022, 883, 270, 361],
-      'map/lava_2.png': [1300, 883, 289, 361],
-      'title/bubble_1.png': [1095, 1397, 181, 181],
-      'title/bubble_2.png': [1284, 1349, 231, 231],
-      'map/puddle.png': [1530, 1301, 217, 214],
-      'map/ice.png': [2309, 1389, 548, 333],
-      'map/street_h.png': [135, 1665, 491, 214],
-      'map/bunting.png': [982, 1603, 714, 206],
+      'map/road.png': [691, 99, 158, 237],          // 2: road, straight (repeated along the path)
+      'map/pond.png': [1801, 65, 505, 271],         // 5: pond
+      'board/holder.png': [2472, 144, 339, 361],    // 6: reaction holder
+      'board/button_and.png': [1501, 384, 243, 254],  // 10
+      'board/button_or.png': [1798, 378, 237, 246],   // 11
+      'map/field.png': [2290, 770, 590, 420],       // 22: crop field (12 is not used)
+      'map/street_cross.png': [169, 917, 231, 590], // 13: street with crossings
+      'map/street_v.png': [663, 895, 223, 593],     // 14: street, straight
+      'map/street_h.png': [135, 1665, 491, 214],    // 20: street, straight (across)
+      'map/lava_1.png': [1022, 883, 270, 361],      // 15: lava, left stream
+      'map/lava_2.png': [1300, 883, 289, 361],      // 15: lava, right stream
+      'title/bubble_1.png': [1095, 1397, 181, 181], // 16
+      'title/bubble_2.png': [1284, 1349, 231, 231], // 17
+      'title/bubble_3.png': [1530, 1301, 217, 214], // 18
+      'map/puddle.png': [2309, 1389, 548, 333],     // 19: puddle
+      'map/bunting.png': [982, 1603, 714, 206],     // 21: bunting flags
     },
   },
   {
