@@ -220,8 +220,10 @@ export async function buildPicture(project, pic) {
   if (tile) clean = await paintGaps(await trimJoiningSides(clean, tile[1]));
   if (pic.file === 'map/water.png') clean = await paintGaps(await trimJoiningSides(clean, 'c'));
   if (!entry) {
-    // not a picture the game has yet (a new character…): keep it as drawn
-    return fitToCanvas(clean, { width: 160, height: 160, ...how });
+    // not a picture the game lists yet: new scenery at the scenery size,
+    // anything else (a new character…) at 160 px
+    const side = pic.file.startsWith('scenery/') ? 256 : 160;
+    return fitToCanvas(clean, { width: side, height: side, ...how });
   }
   if (entry.frames) {
     // animation: the drawing(s) as square frames, held to fill the game's frame count

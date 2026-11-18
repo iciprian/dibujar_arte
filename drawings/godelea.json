@@ -157,6 +157,12 @@
     {"file": "icons/undo.png", "photo": "1794967908578.jpg", "box": [381, 1690, 379, 370], "rotate": 270, "thicken": 0},
     {"file": "icons/lesson.png", "photo": "1794967908578.jpg", "box": [1313, 1561, 333, 285], "rotate": 270, "thicken": 0},
     {"file": "icons/help.png", "photo": "1794967908578.jpg", "box": [1320, 975, 345, 180], "rotate": 270, "thicken": 0},
-    {"file": "?bubble_marker.png", "photo": "1794967908578.jpg", "box": [0, 250, 372, 360], "rotate": 270, "sure": false}
+    {"file": "?bubble_marker.png", "photo": "1794967908578.jpg", "box": [0, 250, 372, 360], "rotate": 270, "sure": false},
+    {"file": "scenery/volcano.png", "photo": "1794969410954.jpg", "box": [153, 278, 556, 578]},
+    {"file": "scenery/trex.png", "photo": "1794969410954.jpg", "box": [917, 517, 856, 606]},
+    {"file": "scenery/egg.png", "photo": "1794969410954.jpg", "box": [267, 1023, 403, 523]},
+    {"file": "scenery/pterodactyl.png", "photo": "1794969410954.jpg", "box": [848, 1454, 912, 303]},
+    {"file": "scenery/fern.png", "photo": "1794969410954.jpg", "box": [1243, 2199, 556, 475]},
+    {"file": "scenery/sauropod.png", "photo": "1794969410954.jpg", "box": [290, 1925, 720, 915]}
   ]
 }
