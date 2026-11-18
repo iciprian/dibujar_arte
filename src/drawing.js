@@ -489,3 +489,28 @@ async function placeByTip(png, { width, height, tip }) {
   return sharp({ create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite([{ input: fitted.data, left, top }]).png().toBuffer();
 }
+
+// ---------- whole-page ink (for sheets of letters) ----------
+
+/**
+ * The whole photo with the paper divided out: rgb as it would look on pure
+ * white, `ink` 0..1 per pixel, and 0 ink outside the sheet of paper.
+ */
+export async function inkImage(input, { maxSide = 2400 } = {}) {
+  const meta = await sharp(input).metadata();
+  const scale = Math.min(1, maxSide / Math.max(meta.width, meta.height));
+  const img = await readRgb(await sharp(input).resize(Math.round(meta.width * scale)).toBuffer());
+  const map = paperMap(img, Math.max(32, Math.round(Math.max(img.width, img.height) / 40)));
+  const flat = flatten(img, map);
+  const page = await pageMask(input);
+  for (let y = 0; y < img.height; y++) {
+    const my = Math.min(page.h - 1, Math.floor((y / scale) * page.scale));
+    for (let x = 0; x < img.width; x++) {
+      const mx = Math.min(page.w - 1, Math.floor((x / scale) * page.scale));
+      if (!page.mask[my * page.w + mx]) flat.ink[y * img.width + x] = 0;
+    }
+  }
+  return { ...flat, scale };
+}
+
+export { components as connectedComponents, dilate as dilateMask };
