@@ -251,7 +251,7 @@ function readRows(img, label, rows, rowsItems) {
       }
       if ((row.drop || '').includes(chars[i])) return; // read only to keep the count right
       const body = g.parts.reduce((a, b) => (b.area > a.area ? b : a));
-      glyphs.push({ ch: chars[i], set: row.set, kind: row.kind, rgba, w: gw, h: gh, top: y0, bottom: y0 + gh, baseline, bodyH: body.y1 - body.y0 });
+      glyphs.push({ ch: chars[i], set: row.set, kind: row.kind, rgba, w: gw, h: gh, top: y0, x0, bottom: y0 + gh, baseline, bodyH: body.y1 - body.y0 });
     });
   });
   return { glyphs, problems };
@@ -419,7 +419,10 @@ function condenseFor(glyphs, sc, m) {
   if (!lower.length) return 1;
   const avg = lower.reduce((s, g) => s + g.w * sc[`${g.set}/lower`], 0) / lower.length; // includes crop margin
   const target = m.size * 0.5;
-  return Math.max(0.72, Math.min(1, target / avg));
+  void target; void avg;
+  // the artist: keep the full width of every letter (squeezing them made
+  // them look cut at the left and right)
+  return 1;
 }
 
 /** Thicker strokes, grown with a round brush; new pixels take the colour of the stroke they grow from. */

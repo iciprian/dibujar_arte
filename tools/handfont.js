@@ -99,7 +99,7 @@ if (r.problems.length) {
   console.log(r.problems.join('\n'));
   process.exit(1);
 }
-for (const f of r.results) console.log(`${f.name}: ${f.count} characters, atlas ${f.width}×${f.height}\n  ${f.chars}`);
+for (const f of r.results) console.log(`${f.name}: ${f.count} characters, squeezed to ${f.condense}, atlas ${f.width}×${f.height}\n  ${f.chars}`);
 console.log('scales', Object.fromEntries(Object.entries(r.scales).map(([k, v]) => [k, v && v.toFixed(2)])));
 
 // preview: every atlas on a light and a dark background
