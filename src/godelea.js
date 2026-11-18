@@ -271,7 +271,9 @@ export async function buildPicture(project, pic) {
     return sharp({ create: { width: size * entry.frames, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
       .composite(strip).png().toBuffer();
   }
-  let png = await fitToCanvas(clean, { width: entry.width, height: entry.height, ...how });
+  // "size": [w, h] in the mapping: a new shape (a portrait background for a phone)
+  const [W, H] = pic.size || [entry.width, entry.height];
+  let png = await fitToCanvas(clean, { width: W, height: H, ...how });
   if (SOLID.has(pic.file)) {
     // text goes on these: never see-through, the gaps become white paper
     png = await sharp(png).flatten({ background: '#fffdf8' }).ensureAlpha().png().toBuffer();
