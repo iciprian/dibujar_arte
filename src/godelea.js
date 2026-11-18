@@ -111,6 +111,45 @@ async function paintGaps(png, amount = 0.85) {
   return sharp(out, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
 }
 
+// Pictures that must work as a backdrop or carry text get their colours
+// pulled toward a target and their contrast lowered (`keep` = how much of
+// the drawing's light/dark variation stays). The pencil texture remains.
+//   sea: the game's pale blue, so islands (even snow) stand out
+//   blue/green buttons: deep enough for the white text on them
+//   game background: calm behind the board
+export const TONES = {
+  'map/water.png': { target: [169, 227, 247], keep: 0.35 },
+  'ui/button_blue.png': { target: [45, 150, 215], keep: 0.55, solid: true },
+  'ui/button_green.png': { target: [40, 165, 105], keep: 0.55, solid: true },
+  'backgrounds/game.png': { keep: 0.4, lift: 10, blur: 1.2 },
+};
+
+// snow tiles: whiter, so the snow island stands out from the pale sea
+const SNOW = { keep: 0.5, lift: 30 };
+
+async function retone(png, { target, keep = 1, lift = 0, solid = false, blur = 0 }) {
+  let input = solid ? await paintGaps(png, 1) : png;
+  if (blur) input = await sharp(input).blur(blur).png().toBuffer();
+  const { data, info } = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const n = info.width * info.height;
+  const mean = [0, 0, 0]; let m = 0;
+  for (let i = 0; i < n; i++) {
+    if (data[i * 4 + 3] < 128) continue;
+    for (let c = 0; c < 3; c++) mean[c] += data[i * 4 + c];
+    m++;
+  }
+  if (!m) return png;
+  for (let c = 0; c < 3; c++) mean[c] /= m;
+  const to = target || mean.map((v) => Math.min(255, v + lift));
+  for (let i = 0; i < n; i++) {
+    if (data[i * 4 + 3] === 0) continue;
+    for (let c = 0; c < 3; c++) {
+      data[i * 4 + c] = Math.max(0, Math.min(255, Math.round(to[c] + (data[i * 4 + c] - mean[c]) * keep)));
+    }
+  }
+  return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+}
+
 /** Makes one game picture from its line in the mapping. Returns the PNG. */
 export async function buildPicture(project, pic) {
   const photo = path.join(project.photos, pic.photo);
@@ -139,7 +178,9 @@ export async function buildPicture(project, pic) {
     return sharp({ create: { width: size * entry.frames, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
       .composite(strip).png().toBuffer();
   }
-  return fitToCanvas(clean, { width: entry.width, height: entry.height, ...how });
+  const png = await fitToCanvas(clean, { width: entry.width, height: entry.height, ...how });
+  const tone = pic.tone ?? TONES[pic.file] ?? (pic.file.startsWith('map/terrain_snow_') ? SNOW : null);
+  return tone ? retone(png, tone) : png;
 }
 
 // ---------- used by the web page ----------
