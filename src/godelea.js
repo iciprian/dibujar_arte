@@ -121,6 +121,8 @@ export const TONES = {
   'map/water.png': { target: [169, 227, 247], keep: 0.35 },
   'ui/button_blue.png': { target: [45, 150, 215], keep: 0.55, solid: true },
   'ui/button_green.png': { target: [40, 165, 105], keep: 0.55, solid: true },
+  // round top-bar buttons: a white icon goes on top, so a deep solid blue disc
+  'ui/button_round.png': { target: [45, 150, 215], keep: 0.5, solid: true, disc: true },
   'backgrounds/game.png': { keep: 0.4, lift: 10, blur: 1.2 },
 };
 
@@ -128,11 +130,60 @@ export const TONES = {
 // outline has a gap (which would otherwise leave the inside transparent).
 const SOLID = new Set(['ui/panel.png', 'ui/button.png', 'ui/button_main.png', 'ui/button_blue.png', 'ui/button_green.png']);
 
+// A drawn circle with hatching: the whole disc becomes opaque (the gaps
+// get painted by paintGaps), outside it stays transparent.
+async function fillDisc(png) {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h } = info;
+  const cx = w / 2; const cy = h / 2; const r = Math.min(w, h) * 0.48;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+      if (d <= r) {
+        if (data[i + 3] < 255) { // paper showing through: white, then painted
+          const a = data[i + 3] / 255;
+          for (let c = 0; c < 3; c++) data[i + c] = Math.round(data[i + c] * a + 255 * (1 - a));
+        }
+        data[i + 3] = 255;
+      } else if (d <= r + 1.5) {
+        data[i + 3] = Math.max(data[i + 3], Math.round(255 * (r + 1.5 - d) / 1.5));
+      }
+    }
+  }
+  return sharp(data, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
+}
+
+// White icons are drawn in thin pencil: thicker strokes read on a button.
+async function thicken(png, radius) {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h } = info;
+  const a = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) a[i] = data[i * 4 + 3];
+  const tmp = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let m = 0;
+      for (let k = -radius; k <= radius; k++) { const xx = x + k; if (xx >= 0 && xx < w && a[y * w + xx] > m) m = a[y * w + xx]; }
+      tmp[y * w + x] = m;
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let m = 0;
+      for (let k = -radius; k <= radius; k++) { const yy = y + k; if (yy >= 0 && yy < h && tmp[yy * w + x] > m) m = tmp[yy * w + x]; }
+      data[(y * w + x) * 4 + 3] = m;
+    }
+  }
+  return sharp(data, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
+}
+
 // snow tiles: whiter, so the snow island stands out from the pale sea
 const SNOW = { keep: 0.5, lift: 30 };
 
-async function retone(png, { target, keep = 1, lift = 0, solid = false, blur = 0 }) {
-  let input = solid ? await paintGaps(png, 1) : png;
+async function retone(png, { target, keep = 1, lift = 0, solid = false, blur = 0, disc = false }) {
+  let input = disc ? await fillDisc(png) : png;
+  if (solid) input = await paintGaps(input, 1);
   if (blur) input = await sharp(input).blur(blur).png().toBuffer();
   const { data, info } = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const n = info.width * info.height;
@@ -187,6 +238,7 @@ export async function buildPicture(project, pic) {
     // text goes on these: never see-through, the gaps become white paper
     png = await sharp(png).flatten({ background: '#fffdf8' }).ensureAlpha().png().toBuffer();
   }
+  if (pic.file.startsWith('icons/')) png = await thicken(png, Math.max(1, Math.round(entry.width / 45)));
   const tone = pic.tone ?? TONES[pic.file] ?? (pic.file.startsWith('map/terrain_snow_') ? SNOW : null);
   return tone ? retone(png, tone) : png;
 }
