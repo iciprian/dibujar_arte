@@ -227,6 +227,22 @@ async function retone(png, { target, keep = 1, lift = 0, solid = false, blur = 0
   return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
 }
 
+// The sea mixes several water drawings: each is brought to the same average
+// blue, with its strokes a little softer, so the sea is one sea and not a
+// checkerboard of different blues.
+const SEA = [128, 196, 236];
+async function sameSea(png) {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const n = info.width * info.height;
+  const mean = [0, 0, 0];
+  for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) mean[c] += data[i * 4 + c] / n;
+  for (let i = 0; i < n; i++) {
+    for (let c = 0; c < 3; c++) data[i * 4 + c] = Math.round(Math.max(0, Math.min(255, (data[i * 4 + c] - mean[c]) * 0.75 + SEA[c])));
+    data[i * 4 + 3] = 255;
+  }
+  return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+}
+
 /** Makes one game picture from its line in the mapping. Returns the PNG. */
 export async function buildPicture(project, pic) {
   const photo = path.join(project.photos, pic.photo);
@@ -239,9 +255,14 @@ export async function buildPicture(project, pic) {
     box, rotate: pic.rotate || 0, opaque, close: pic.close, fill: pic.fill ?? !pic.file.startsWith('title/'), pad: opaque ? 0 : undefined,
     strength: pic.strength ?? strength(pic.file),
   });
+  // "flip": the drawing mirrored left to right (a top-left corner from her
+  // top-right one, a right edge from her left edge)
+  if (pic.flip) clean = await sharp(clean).flop().png().toBuffer();
   const tile = pic.file.match(/^map\/terrain_\w+_(b|bl|br|c|l|r|t|tl|tr)\.png$/);
-  if (tile) clean = await paintGaps(await trimJoiningSides(clean, tile[1]));
-  if (pic.file === 'map/water.png') clean = await paintGaps(await trimJoiningSides(clean, 'c'));
+  // (snow is white: its paper is the colour, so its gaps stay white)
+  if (tile) clean = await trimJoiningSides(clean, tile[1]);
+  if (tile && !pic.file.includes('terrain_snow_')) clean = await paintGaps(clean);
+  if (/^map\/water(_\d)?\.png$/.test(pic.file)) clean = await sameSea(await paintGaps(await trimJoiningSides(clean, 'c')));
   if (pic.file.startsWith('title/')) {
     // the start screen's drawn words: the logo in its colours, 900 px wide;
     // menu words as white stamps (the game colours them per button), 84 px

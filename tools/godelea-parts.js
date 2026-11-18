@@ -50,6 +50,29 @@ const SHEETS = [
     ].map((b, i) => [`party/firework_${i + 1}.png`, b])),
   },
 ];
+// the second fireworks sheet: three bursts that touch (cut by hand; `blank`
+// whites out the neighbours' rays inside a cut) and ten strokes, the trails
+// the rockets leave as they climb
+SHEETS.push({
+  photo: '1795022695926.jpg', rotate: 0,
+  parts: {
+    'party/firework_14.png': [1396, 35, 1384, 852],   // purple and orange
+    'party/firework_15.png': [2791, 355, 521, 509],   // small orange, at the edge
+    'party/firework_16.png': [1715, 752, 1573, 1372], // big red
+    ...Object.fromEntries([
+      [857, 301, 81, 272], [291, 1116, 97, 411], [456, 304, 81, 440], [466, 1116, 97, 298], [666, 521, 78, 213],
+      [718, 1155, 87, 239], [728, 1824, 84, 288], [938, 1210, 175, 906], [1291, 1705, 71, 382], [1536, 1553, 100, 524],
+    ].map((b, i) => [`party/trail_${i + 1}.png`, b])),
+  },
+  blank: {
+    'party/firework_14.png': [[2500, 760, 290, 130]],
+    'party/firework_15.png': [[2940, 740, 190, 200]],
+    'party/firework_16.png': [[1656, 700, 864, 157], [3135, 740, 177, 130]],
+  },
+  // these two touch the red burst (and the small one the photo's edge): keep
+  // only coloured ink, without the red of the big burst
+  inkOnly: { 'party/firework_14.png': 'red', 'party/firework_15.png': 'red' },
+});
 // the pink burst at the bottom of the fireworks sheet was not found as one drawing
 SHEETS[1].parts['party/firework_11.png'] = [1280, 1444, 400, 345];
 SHEETS[1].parts['party/firework_12.png'] = [527, 27, 318, 373];   // blue, top
@@ -60,13 +83,38 @@ for (const sheet of SHEETS) {
   for (const [file, [x, y, w, h]] of Object.entries(sheet.parts)) {
     // fireworks are thin strokes: keep only the strokes, no filled inside
     const fill = !file.startsWith('party/');
-    const png = await cleanDrawing(turned, { box: { x, y, w, h }, fill, strength: 1.2 });
+    let photo = turned;
+    const blank = sheet.blank?.[file];
+    if (blank) {
+      const m = await sharp(turned).metadata();
+      const svg = `<svg width="${m.width}" height="${m.height}" xmlns="http://www.w3.org/2000/svg">${blank.map(([bx, by, bw, bh]) => `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="#f4f4f2"/>`).join('')}</svg>`;
+      photo = await sharp(turned).composite([{ input: Buffer.from(svg) }]).jpeg({ quality: 96 }).toBuffer();
+    }
+    const png = sheet.inkOnly?.[file]
+      ? await colourInk(photo, { x, y, w, h }, sheet.inkOnly[file])
+      : await cleanDrawing(photo, { box: { x, y, w, h }, fill, strength: 1.2 });
     const out = await sharp(png).resize(256, 256, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
     const target = path.join(project.out, file);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, out);
     console.log('✓', file);
   }
+}
+
+// Coloured marker on white paper: what is coloured stays, the paper (grey or
+// white, whatever the light) goes. `drop: 'red'` also leaves out red ink.
+async function colourInk(photo, { x, y, w, h }, drop) {
+  const { data, info } = await sharp(photo).extract({ left: x, top: y, width: w, height: h }).raw().toBuffer({ resolveWithObject: true });
+  const n = info.width * info.height;
+  const out = Buffer.alloc(n * 4);
+  for (let i = 0; i < n; i++) {
+    const r = data[i * 3]; const g = data[i * 3 + 1]; const b = data[i * 3 + 2];
+    const sat = Math.max(r, g, b) - Math.min(r, g, b);
+    let a = Math.max(0, Math.min(255, (sat - 28) * 5));
+    if (drop === 'red' && r > 2.5 * g && r > 1.6 * b) a = 0;
+    out[i * 4] = r; out[i * 4 + 1] = g; out[i * 4 + 2] = b; out[i * 4 + 3] = a;
+  }
+  return sharp(out, { raw: { width: info.width, height: info.height, channels: 4 } }).trim({ threshold: 1 }).png().toBuffer();
 }
 
 // ---------- fireworks that glow ----------
@@ -91,7 +139,7 @@ function vivid([r, g, b]) {
   return [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(((v - l) * 2.2 + l) * (255 / mx)))));
 }
 
-async function glow(png, colour) {
+async function glow(png, colour, own = false) {
   const S = 320; const pad = 40;
   const base = await sharp(png).resize(S - 2 * pad, S - 2 * pad, { fit: 'inside' })
     .extend({ top: pad, bottom: pad, left: pad, right: pad, background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -132,8 +180,11 @@ async function glow(png, colour) {
     const d = Math.hypot(x - cx, y - cy) / (info.width * 0.5);
     const hot = Math.max(0, 1 - d / 0.28) * 0.9 + stroke * 0.25;
     const a = Math.min(1, stroke + h * (1 - stroke));
+    // a burst of several colours keeps each stroke's own colour, made vivid
+    // (a little lighter, so dark inks like purple still shine at night)
+    const pc = own && data[i * 4 + 3] > 20 ? vivid([data[i * 4], data[i * 4 + 1], data[i * 4 + 2]]).map((v) => v * 0.7 + 76) : col;
     for (let c = 0; c < 3; c++) {
-      const v = col[c] * (1 - hot) + 255 * hot;
+      const v = pc[c] * (1 - hot) + 255 * hot;
       out[i * 4 + c] = Math.round(Math.min(255, v));
     }
     out[i * 4 + 3] = Math.round(a * 255);
@@ -144,11 +195,12 @@ async function glow(png, colour) {
 const party = path.join(project.out, 'party');
 const drawn = (await fs.readdir(party)).filter((f) => /^firework_\d+\.png$/.test(f)).sort((a, b) => parseInt(a.slice(9)) - parseInt(b.slice(9)));
 const small = new Set(['firework_7.png', 'firework_8.png']); // the two little stars: sparks and rockets
+const multi = new Set(['firework_14.png']); // purple and orange: each ray keeps its colour
 let k = 0; let made = 0;
 for (const f of drawn) {
   const src = await fs.readFile(path.join(party, f));
   const name = small.has(f) ? `spark_${f.slice(9, -4)}` : `fw_${String(++k).padStart(2, '0')}`;
-  await fs.writeFile(path.join(party, `${name}.png`), await glow(src));
+  await fs.writeFile(path.join(party, `${name}.png`), await glow(src, null, multi.has(f)));
   made++;
   if (!small.has(f)) {
     // the same burst in another firework colour
@@ -158,3 +210,33 @@ for (const f of drawn) {
   }
 }
 console.log(`fireworks: ${made} glowing (from ${drawn.length} drawings)`);
+
+// ---------- trails ----------
+// Her strokes become the light a rocket leaves as it climbs: vivid, with a
+// soft halo, white hot at the top (where the rocket is) and fading below.
+async function trail(png) {
+  const W = 64; const H = 256; const pad = 12;
+  const { data, info } = await sharp(png).resize(W - 2 * pad, H - 2 * pad, { fit: 'inside' })
+    .resize(W, H, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const n = info.width * info.height;
+  const col = vivid(hueOf(data, n));
+  const alpha = Buffer.alloc(n);
+  for (let i = 0; i < n; i++) alpha[i] = Math.min(255, Math.round(data[i * 4 + 3] * 1.3));
+  const halo = await sharp(alpha, { raw: { width: W, height: H, channels: 1 } }).blur(5).extractChannel(0).raw().toBuffer();
+  let top = H; let low = 0;
+  for (let i = 0; i < n; i++) if (alpha[i] > 60) { const y = Math.floor(i / W); top = Math.min(top, y); low = Math.max(low, y); }
+  const out = Buffer.alloc(n * 4);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    const u = low > top ? Math.max(0, Math.min(1, (y - top) / (low - top))) : 0; // 0 at the top, 1 at the tail
+    const stroke = alpha[i] / 255;
+    const a = Math.min(1, stroke + Math.min(1, (halo[i] / 255) * 1.8) * 0.5 * (1 - stroke)) * (1 - 0.85 * u);
+    const hot = Math.max(0, 1 - u / 0.18) * 0.85;
+    for (let c = 0; c < 3; c++) out[i * 4 + c] = Math.round(col[c] * (1 - hot) + 255 * hot);
+    out[i * 4 + 3] = Math.round(a * 255);
+  }
+  return sharp(out, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer();
+}
+const trails = (await fs.readdir(party)).filter((f) => /^trail_\d+\.png$/.test(f));
+for (const f of trails) await fs.writeFile(path.join(party, `glow_${f}`), await trail(await fs.readFile(path.join(party, f))));
+console.log(`trails: ${trails.length}`);
