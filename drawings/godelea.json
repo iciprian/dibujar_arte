@@ -163,6 +163,11 @@
     {"file": "scenery/egg.png", "photo": "1794969410954.jpg", "box": [267, 1023, 403, 523]},
     {"file": "scenery/pterodactyl.png", "photo": "1794969410954.jpg", "box": [848, 1454, 912, 303]},
     {"file": "scenery/fern.png", "photo": "1794969410954.jpg", "box": [1243, 2199, 556, 475]},
-    {"file": "scenery/sauropod.png", "photo": "1794969410954.jpg", "box": [290, 1925, 720, 915]}
+    {"file": "scenery/sauropod.png", "photo": "1794969410954.jpg", "box": [290, 1925, 720, 915]},
+    {"file": "title/logo.png", "photo": "1794970346160.jpg", "box": [696, 792, 2336, 888]},
+    {"file": "title/mapa.png", "photo": "1794970346148.jpg", "box": [1150, 444, 450, 940], "rotate": 270},
+    {"file": "title/salir.png", "photo": "1794970346148.jpg", "box": [300, 430, 330, 760], "rotate": 270},
+    {"file": "title/empezar_de_cero.png", "photo": "1794970346148.jpg", "box": [740, 410, 365, 1840], "rotate": 270},
+    {"file": "title/continuar.png", "photo": "1794970346148.jpg", "box": [1316, 2892, 440, 1056], "rotate": 270}
   ]
 }

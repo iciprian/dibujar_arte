@@ -33,21 +33,42 @@ const SHEET = {
 };
 const out = path.join(project.out, '..', 'fonts');
 
+// the second sheet: digits, brackets and signs, in a thinner black pen
+const SYMBOLS = {
+  photo: '1794970160956.jpg',
+  rowMode: 'gaps', // rows of small marks only: split by the gaps between rows
+  rows: [
+    { set: 'sym', kind: 'punct', chars: '0123456789', xMax: 0.8 }, // then a "10"
+    { set: 'sym', kind: 'punct', chars: '()', xMax: 0.24 }, // then a mark and ∧ ∨ drawn again below
+    { set: 'sym', kind: 'skip', chars: '' }, // P(x)  ∀x.P(x): examples
+    { set: 'sym', kind: 'skip', chars: '' }, // a comma (drawn again below)
+    { set: 'sym', kind: 'skip', chars: '' }, // mⁿ: how powers could look
+    { set: 'sym', kind: 'punct', chars: '□' },
+    { set: 'sym', kind: 'punct', chars: '✗' },
+    { set: 'sym', kind: 'lower', chars: 'áéíóü' },
+    { set: 'sym', kind: 'punct', chars: ',;:-…\'"', drop: '…' }, // its … are ticks: made from the dot instead
+    { set: 'sym', kind: 'punct', chars: '¬∧∨→↔⊥' },
+    { set: 'sym', kind: 'punct', chars: '∀∃·+=×' },
+  ],
+};
+
 const r = await buildFonts({
-  photo: path.join(project.photos, SHEET.photo),
-  rows: SHEET.rows,
+  sheets: [
+    { photo: path.join(project.photos, SHEET.photo), rows: SHEET.rows },
+    { photo: path.join(project.photos, SYMBOLS.photo), rows: SYMBOLS.rows, rowMode: SYMBOLS.rowMode },
+  ],
   size: 128,
   out,
   // ★ ✓ ▶ in texts come from the drawn menu signs
   icons: Object.fromEntries(['star', 'checkmark', 'play'].map((n) => [n, path.join(project.out, `icons/${n}.png`)])),
   fonts: [
     // everyday text: the grey letters, white so the game colours them
-    { name: 'hand', mode: 'mask', sets: { upper: 'grey', lower: 'grey', punct: 'grey' } },
+    { name: 'hand', mode: 'mask', sets: { upper: 'grey', lower: 'grey', punct: 'grey' }, extra: ['sym'] },
     // buttons and headings: the same letters with thicker strokes
-    { name: 'hand_bold', mode: 'mask', bold: 3, sets: { upper: 'grey', lower: 'grey', punct: 'grey' } },
+    { name: 'hand_bold', mode: 'mask', bold: 3, sets: { upper: 'grey', lower: 'grey', punct: 'grey' }, extra: ['sym'] },
     // white titles: thick strokes with a dark edge, so they read on light
     // backgrounds (Godot cannot outline a drawn font)
-    { name: 'hand_outlined', mode: 'mask', bold: 3, edge: { px: 9, rgb: [44, 51, 80], alpha: 0.9 }, sets: { upper: 'grey', lower: 'grey', punct: 'grey' } },
+    { name: 'hand_outlined', mode: 'mask', bold: 3, edge: { px: 9, rgb: [44, 51, 80], alpha: 0.9 }, sets: { upper: 'grey', lower: 'grey', punct: 'grey' }, extra: ['sym'] },
     // emphasis: blue capitals, red small letters, in their own colours
     { name: 'hand_color', mode: 'colour', sets: { upper: 'blue', lower: 'red', punct: 'blue' } },
   ],

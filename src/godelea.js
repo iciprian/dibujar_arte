@@ -118,11 +118,18 @@ async function paintGaps(png, amount = 0.85) {
 //   blue/green buttons: deep enough for the white text on them
 //   game background: calm behind the board
 export const TONES = {
-  'map/water.png': { target: [169, 227, 247], keep: 0.35 },
+  // a deeper blue than the white snow, so the ice island stands out
+  'map/water.png': { target: [128, 196, 236], keep: 0.3 },
   'ui/button_blue.png': { target: [45, 150, 215], keep: 0.55, solid: true },
   'ui/button_green.png': { target: [40, 165, 105], keep: 0.55, solid: true },
   // round top-bar buttons: a white icon goes on top, so a deep solid blue disc
   'ui/button_round.png': { target: [45, 150, 215], keep: 0.5, solid: true, disc: true },
+  // map stops: solid discs in a deeper shade of their colour, so the white
+  // number or sign on top reads
+  'map/node_done.png': { target: [52, 160, 84], keep: 0.45, solid: true, disc: true },
+  'map/node_lesson.png': { target: [40, 124, 206], keep: 0.45, solid: true, disc: true },
+  'map/node_level.png': { target: [222, 160, 20], keep: 0.45, solid: true, disc: true },
+  'map/node_extra.png': { target: [206, 62, 128], keep: 0.45, solid: true, disc: true },
   'backgrounds/game.png': { keep: 0.4, lift: 10, blur: 1.2 },
 };
 
@@ -154,6 +161,19 @@ async function fillDisc(png) {
   return sharp(data, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
 }
 
+// A thin white outline round a drawing, like a sticker: it stands out from
+// any ground on the map.
+async function halo(png, r) {
+  const ring = await thicken(png, r);
+  const { data, info } = await sharp(ring).raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < info.width * info.height; i++) {
+    data[i * 4] = 255; data[i * 4 + 1] = 255; data[i * 4 + 2] = 255;
+    data[i * 4 + 3] = Math.round(data[i * 4 + 3] * 0.92);
+  }
+  const white = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+  return sharp(white).composite([{ input: png }]).png().toBuffer();
+}
+
 // White icons are drawn in thin pencil: thicker strokes read on a button.
 async function thicken(png, radius) {
   const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -178,8 +198,10 @@ async function thicken(png, radius) {
   return sharp(data, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
 }
 
-// snow tiles: whiter, so the snow island stands out from the pale sea
-const SNOW = { keep: 0.5, lift: 30 };
+// snow tiles: whiter, so the snow island stands out from the sea
+const SNOW = { keep: 0.45, lift: 34 };
+// every other ground: calmer, so the drawings standing on it show
+const GROUND = { keep: 0.5, lift: 14 };
 
 async function retone(png, { target, keep = 1, lift = 0, solid = false, blur = 0, disc = false }) {
   let input = disc ? await fillDisc(png) : png;
@@ -213,12 +235,26 @@ export async function buildPicture(project, pic) {
   const how = placement({ file: pic.file });
   const opaque = how.place === 'cover';
   let clean = await cleanDrawing(photo, {
-    box, rotate: pic.rotate || 0, opaque, close: pic.close, fill: pic.fill ?? true, pad: opaque ? 0 : undefined,
+    box, rotate: pic.rotate || 0, opaque, close: pic.close, fill: pic.fill ?? !pic.file.startsWith('title/'), pad: opaque ? 0 : undefined,
     strength: pic.strength ?? strength(pic.file),
   });
   const tile = pic.file.match(/^map\/terrain_\w+_(b|bl|br|c|l|r|t|tl|tr)\.png$/);
   if (tile) clean = await paintGaps(await trimJoiningSides(clean, tile[1]));
   if (pic.file === 'map/water.png') clean = await paintGaps(await trimJoiningSides(clean, 'c'));
+  if (pic.file.startsWith('title/')) {
+    // the start screen's drawn words: the logo in its colours, 900 px wide;
+    // menu words as white stamps (the game colours them per button), 84 px
+    // tall (three times their size on a phone)
+    if (pic.file === 'title/logo.png') return sharp(clean).resize({ width: 900 }).png().toBuffer();
+    // every word by the same factor, so they keep the sizes they were written at
+    const { width: cw } = await sharp(clean).metadata();
+    const word = await sharp(clean).resize({ width: Math.max(1, Math.round(cw * 0.2)) }).png().toBuffer();
+    // pen strokes are thin: a little thicker so the word reads on any button
+    const thick = await thicken(await fitToCanvas(word, { ...(await sharp(word).metadata()), place: 'stretch', white: true }), 2);
+    const { data, info } = await sharp(thick).raw().toBuffer({ resolveWithObject: true });
+    for (let i = 0; i < info.width * info.height; i++) { data[i * 4] = 255; data[i * 4 + 1] = 255; data[i * 4 + 2] = 255; } // the grown edge white too
+    return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+  }
   if (!entry) {
     // not a picture the game lists yet: new scenery at the scenery size,
     // anything else (a new character…) at 160 px
@@ -242,7 +278,9 @@ export async function buildPicture(project, pic) {
   }
   const grow = pic.thicken ?? Math.max(1, Math.round(entry.width / 45));
   if (pic.file.startsWith('icons/') && grow) png = await thicken(png, grow);
-  const tone = pic.tone ?? TONES[pic.file] ?? (pic.file.startsWith('map/terrain_snow_') ? SNOW : null);
+  const tone = pic.tone ?? TONES[pic.file]
+    ?? (pic.file.startsWith('map/terrain_snow_') ? SNOW : pic.file.startsWith('map/terrain_') ? GROUND : null);
+  if (pic.file.startsWith('scenery/') || pic.file.startsWith('characters/')) png = await halo(png, Math.max(3, Math.round(entry.height / 40)));
   return tone ? retone(png, tone) : png;
 }
 

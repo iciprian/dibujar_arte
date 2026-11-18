@@ -17,7 +17,9 @@ import sharp from 'sharp';
 
 import { connectedComponents, dilateMask, inkImage } from './drawing.js';
 
-const DESCENDERS = new Set([...'gjpqy¿¡']);
+const DESCENDERS = new Set([...'gjpqy¿¡,;']);
+// marks that float above the writing line (placed by the line, not their bottom)
+const FLOATING = new Set([...'\'"-·+=×¬→↔⇒^']);
 const XHEIGHT = new Set([...'acemnorsuvwxz']); // small letters with no ascender or descender
 
 /** Font metrics in atlas pixels for a font of `size` px. */
@@ -44,7 +46,7 @@ const median = (a) => {
  * @param {{set: string, kind: 'upper'|'lower'|'punct', chars: string}[]} rows  top to bottom
  * @returns {Promise<{glyphs: object[], problems: string[]}>} glyph = {ch, set, kind, rgba, w, h, top, bottom, baseline}
  */
-export async function readSheet(photo, rows) {
+export async function readSheet(photo, rows, { rowMode = 'letters' } = {}) {
   const img = await inkImage(photo, { maxSide: 4000 });
   const { width: w, height: h } = img;
   const mask = new Uint8Array(w * h);
@@ -55,6 +57,9 @@ export async function readSheet(photo, rows) {
   const minArea = (w / 1000) ** 2 * 30;
   let pieces = comps.filter((c) => !c.border && c.area >= minArea);
 
+  // rows of a sparse sheet (symbols, some rows of small marks only): the
+  // biggest vertical gaps between pieces split it
+  if (rowMode === 'gaps') return readRows(img, label, rows, splitByGaps(pieces, rows.length));
   // rows: letter-sized pieces that overlap vertically form a row; then the
   // small pieces (dots, tildes, accents) join the nearest row
   const medH = median(pieces.map((c) => c.y1 - c.y0));
@@ -113,12 +118,38 @@ export async function readSheet(photo, rows) {
   if (bands.length !== rows.length) {
     return { glyphs: [], problems: [`found ${bands.length} rows of letters, the layout has ${rows.length}: ` + bands.map((r) => `${Math.round(r.y0)}-${Math.round(r.y1)}:${r.items.length}`).join(" ") + ` medH ${medH}`] };
   }
-  const rowsItems = bands.map((r) => r.items);
+  return readRows(img, label, rows, bands.map((r) => r.items));
+}
+
+function splitByGaps(pieces, n) {
+  const sorted = [...pieces].sort((a, b) => a.cy - b.cy);
+  // gap between a piece and everything above it (rows overlap little)
+  const gaps = [];
+  let lowest = -Infinity;
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0) gaps.push({ i, g: sorted[i].y0 - lowest });
+    lowest = Math.max(lowest, sorted[i].y1);
+  }
+  const cuts = gaps.sort((a, b) => b.g - a.g).slice(0, n - 1).map((x) => x.i).sort((a, b) => a - b);
+  const out = [];
+  let start = 0;
+  for (const c of [...cuts, sorted.length]) { out.push(sorted.slice(start, c)); start = c; }
+  return out;
+}
+
+/** The letters of each row, from the pieces of ink found on it. */
+function readRows(img, label, rows, rowsItems) {
+  const { width: w, height: h } = img;
+  if (rowsItems.length !== rows.length) {
+    return { glyphs: [], problems: [`found ${rowsItems.length} rows, the layout has ${rows.length}`] };
+  }
 
   const problems = [];
   const glyphs = [];
   rows.forEach((row, r) => {
+    if (row.kind === 'skip') return; // a row of examples, not characters
     const chars = [...row.chars];
+    if (row.xMax) rowsItems[r] = rowsItems[r].filter((c) => c.x0 < w * row.xMax); // what follows is not wanted
     // left to right; then join the pieces that overlap most until the count fits
     let groups = rowsItems[r].sort((a, b) => a.x0 - b.x0).map((c) => ({ parts: [c], x0: c.x0, x1: c.x1, y0: c.y0, y1: c.y1 }));
     // drop specks far smaller than the row's letters once there are too many pieces
@@ -148,19 +179,23 @@ export async function readSheet(photo, rows) {
     // the writing line: letters that sit on it keep their own bottom (rows
     // drift and slope); letters hanging below use a line fitted through the
     // others' bottoms
-    const sits = (i) => !DESCENDERS.has(chars[i]) && chars[i] !== 'Q';
-    const pts = groups.map((g, i) => ({ x: (g.x0 + g.x1) / 2, y: g.y1, ok: sits(i) })).filter((p) => p.ok);
+    const sits = (i) => !DESCENDERS.has(chars[i]) && !FLOATING.has(chars[i]) && chars[i] !== 'Q';
+    let pts = groups.map((g, i) => ({ x: (g.x0 + g.x1) / 2, y: g.y1, ok: sits(i) })).filter((p) => p.ok);
+    if (!pts.length) pts = [{ x: 0, y: Math.max(...groups.map((g) => g.y1)) }];
     const fit = (list) => {
       const n = list.length; const mx = list.reduce((a, p) => a + p.x, 0) / n; const my = list.reduce((a, p) => a + p.y, 0) / n;
       const sxx = list.reduce((a, p) => a + (p.x - mx) ** 2, 0) || 1;
       const k = list.reduce((a, p) => a + (p.x - mx) * (p.y - my), 0) / sxx;
       return (x) => my + k * (x - mx);
     };
-    let line = fit(pts);
+    // a slope needs several letters; from two or three it would tilt wildly
+    // when carried over to the marks further along the row
+    const flat = median(pts.map((p) => p.y));
+    let line = pts.length >= 4 ? fit(pts) : () => flat;
     const resid = pts.map((p) => Math.abs(p.y - line(p.x)));
     const lim = Math.max(3, median(resid) * 2.5);
     const good = pts.filter((p, j) => resid[j] <= lim);
-    if (good.length >= 2) line = fit(good);
+    if (good.length >= 4) line = fit(good);
     groups.forEach((g, i) => {
       const baseline = sits(i) ? g.y1 : line((g.x0 + g.x1) / 2);
       const ids = new Set(g.parts.map((p) => p.id));
@@ -178,6 +213,7 @@ export async function readSheet(photo, rows) {
           rgba[o + 3] = Math.round(a * 255);
         }
       }
+      if ((row.drop || '').includes(chars[i])) return; // read only to keep the count right
       glyphs.push({ ch: chars[i], set: row.set, kind: row.kind, rgba, w: gw, h: gh, top: y0, bottom: y0 + gh, baseline });
     });
   });
@@ -196,13 +232,37 @@ export function scales(glyphs, m) {
     out[`${set}/upper`] = capH ? m.capH / capH : null;
     out[`${set}/lower`] = xH ? m.xH / xH : null;
   }
+  // a sheet of symbols: everything on it follows its digits (as tall as capitals)
+  for (const set of new Set(glyphs.map((g) => g.set))) {
+    const digits = glyphs.filter((g) => g.set === set && /[0-9]/.test(g.ch));
+    if (digits.length >= 4) {
+      const dH = median(digits.map((g) => g.baseline - g.top - 3));
+      out[`${set}/digits`] = m.capH * 0.95 / dH;
+    }
+  }
   // punctuation rows follow their set's capitals (or small letters)
   for (const set of new Set(glyphs.map((g) => g.set))) {
+    if (out[`${set}/digits`]) {
+      out[`${set}/punct`] = out[`${set}/upper`] = out[`${set}/lower`] = out[`${set}/digits`];
+      continue;
+    }
     out[`${set}/punct`] = out[`${set}/upper`] || out[`${set}/lower`];
     out[`${set}/upper`] ||= out[`${set}/lower`];
     out[`${set}/lower`] ||= out[`${set}/upper`];
   }
   return out;
+}
+
+/** About how thick a glyph's strokes are, in px: twice its ink over its outline. */
+function thickness(g) {
+  let area = 0; let edge = 0;
+  const on = (x, y) => x >= 0 && y >= 0 && x < g.w && y < g.h && g.data[(y * g.w + x) * 4 + 3] > 128;
+  for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
+    if (!on(x, y)) continue;
+    area++;
+    if (!on(x - 1, y) || !on(x + 1, y) || !on(x, y - 1) || !on(x, y + 1)) edge++;
+  }
+  return edge ? (2 * area) / edge : 0;
 }
 
 /** Scales one glyph and turns it white (mask) or keeps and brightens its colour. */
@@ -353,7 +413,9 @@ function meanColour(glyphs) {
  */
 async function synthesize(map, m, { stroke, dot, upperColour, lowerColour }) {
   const add = (g) => { if (!map.has(g.ch)) map.set(g.ch, g); };
-  const accent = await resizeG(await rasterRotate(stroke, 38), m.size * 0.13, m.size * 0.2);
+  // the accent: the one drawn over á if there is one, else a turned stroke
+  const drawnA = map.get('á');
+  const accent = (drawnA && await accentOf(drawnA, m)) || await resizeG(await rasterRotate(stroke, 38), m.size * 0.13, m.size * 0.2);
   const smallDot = await resizeG(dot, dot.w * 0.85, dot.h * 0.85);
   const accFor = (base) => (/[A-ZÁÉÍÓÚÑ]/.test(base.ch) ? (upperColour ? tint(accent, upperColour) : accent) : (lowerColour ? tint(accent, lowerColour) : accent));
   const dotFor = (base) => (/[A-Z]/.test(base.ch) ? (upperColour ? tint(smallDot, upperColour) : smallDot) : (lowerColour ? tint(smallDot, lowerColour) : smallDot));
@@ -471,6 +533,18 @@ async function symbols(map, m, { stroke: leaning, colour, icons = {} }) {
     if (g && ch === '▶') g = await cropLeft(g, 0.68); // the drawn sign is ▶|: keep the triangle
     if (g) add({ ch, ...g, rise });
   }
+  // small digits under the line (x₁) and ^ from the drawn ones
+  for (let k = 0; k <= 9; k++) {
+    const dg = map.get(String(k));
+    if (!dg) continue;
+    const small = await resizeG(dg, dg.w * 0.6, dg.h * 0.6);
+    add({ ch: String.fromCodePoint(0x2080 + k), ...small, rise: Math.round(small.h * 0.55) });
+  }
+  const wedge = map.get('∧');
+  if (wedge) {
+    const small = await resizeG(wedge, wedge.w * 0.6, wedge.h * 0.6);
+    add({ ch: '^', ...small, rise: m.capH });
+  }
   const d = map.get('.');
   if (d) {
     add(composeC('·', [{ g: d, cx: 0, cy: mid }]));
@@ -492,6 +566,17 @@ async function cropLeft(g, frac) {
   const w = Math.max(1, Math.round(g.w * frac));
   const { data, info } = await sharp(g.data, { raw: { width: g.w, height: g.h, channels: 4 } }).extract({ left: 0, top: 0, width: w, height: g.h }).trim({ threshold: 1 }).raw().toBuffer({ resolveWithObject: true });
   return { w: info.width, h: info.height, data: Buffer.from(data) };
+}
+
+/** The accent of a drawn á: what is above its small letter. */
+async function accentOf(g, m) {
+  const cut = Math.max(1, Math.round(g.rise - m.xH * 1.08));
+  if (cut >= g.h || cut < 4) return null;
+  const data = Buffer.from(g.data.subarray(0, cut * g.w * 4));
+  try {
+    const { data: d, info } = await sharp(data, { raw: { width: g.w, height: cut, channels: 4 } }).trim({ threshold: 1 }).raw().toBuffer({ resolveWithObject: true });
+    return { w: info.width, h: info.height, data: Buffer.from(d) };
+  } catch { return null; }
 }
 
 async function trimTop(g, frac) {
@@ -569,19 +654,43 @@ export async function writeFont(dir, name, map, m) {
  */
 export async function buildFonts(cfg) {
   const m = metrics(cfg.size);
-  const { glyphs, problems } = await readSheet(cfg.photo, cfg.rows);
+  const sheets = cfg.sheets || [{ photo: cfg.photo, rows: cfg.rows }];
+  const glyphs = []; const problems = [];
+  for (const sh of sheets) {
+    const r = await readSheet(sh.photo, sh.rows, { rowMode: sh.rowMode });
+    glyphs.push(...r.glyphs);
+    problems.push(...r.problems.map((p) => `${path.basename(sh.photo)}: ${p}`));
+  }
   if (problems.length) return { problems };
   const sc = scales(glyphs, m);
   const results = [];
   for (const font of cfg.fonts) {
     const map = new Map();
+    const extra = new Set(font.extra || []);
     const want = (g) => font.sets[g.kind === 'punct' ? 'punct' : g.kind] === g.set
       || (g.kind === 'punct' && font.sets.punctFallback === g.set);
     const mine = glyphs.filter(want);
     const condense = condenseFor(mine, sc, m);
+    const opts = { mode: font.mode, bold: font.bold || 0, condense, edge: font.edge || null };
     for (const g of mine) {
       if (map.has(g.ch)) continue;
-      map.set(g.ch, await finishGlyph(g, sc[`${g.set}/${g.kind}`], { mode: font.mode, bold: font.bold || 0, condense, edge: font.edge || null }));
+      map.set(g.ch, await finishGlyph(g, sc[`${g.set}/${g.kind}`], opts));
+    }
+    // characters from other sheets (symbols in another pen): their strokes
+    // are thickened to match the letters'
+    const more = glyphs.filter((g) => extra.has(g.set) && !map.has(g.ch));
+    if (more.length) {
+      const letters = [...map.values()].filter((g) => /[a-zA-Z]/.test(g.ch));
+      const plain = { ...opts, bold: 0, edge: null };
+      const probe = await Promise.all(more.slice(0, 12).map((g) => finishGlyph(g, sc[`${g.set}/${g.kind}`], plain)));
+      const lettersPlain = await Promise.all(glyphs.filter(want).filter((g) => /[a-z]/.test(g.ch)).slice(0, 12)
+        .map((g) => finishGlyph(g, sc[`${g.set}/${g.kind}`], plain)));
+      const grow = Math.max(0, Math.round((median(lettersPlain.map(thickness)) - median(probe.map(thickness))) / 2));
+      for (const g of more) {
+        if (map.has(g.ch)) continue;
+        map.set(g.ch, await finishGlyph(g, sc[`${g.set}/${g.kind}`], { ...opts, bold: (opts.bold || 0) + grow }));
+      }
+      void letters;
     }
     // strokes for the made-up characters come from this font's own "!" and "."
     const bang = map.get('!'); const dot = map.get('.');
