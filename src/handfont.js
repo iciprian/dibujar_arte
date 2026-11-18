@@ -30,7 +30,7 @@ export function metrics(size) {
     xH: Math.round(size * 0.50),
     ascent: Math.round(size * 0.98), // room for accents over capitals
     descent: Math.round(size * 0.30),
-    side: Math.round(size * 0.025), // space before and after each letter
+    side: Math.round(size * 0.07), // space before and after each letter (the artist: a few pixels more)
     space: Math.round(size * 0.30),
   };
 }
@@ -222,15 +222,28 @@ function readRows(img, label, rows, rowsItems) {
     groups.forEach((g, i) => {
       const baseline = sits(i) ? g.y1 : line((g.x0 + g.x1) / 2);
       const ids = new Set(g.parts.map((p) => p.id));
-      const pad = 3;
+      // a generous margin: the light edge of the artist's strokes stays whole
+      const pad = Math.max(6, Math.round(w / 180));
       const x0 = Math.max(0, g.x0 - pad); const y0 = Math.max(0, g.y0 - pad);
       const gw = Math.min(w, g.x1 + pad + 1) - x0; const gh = Math.min(h, g.y1 + pad + 1) - y0;
       const rgba = Buffer.alloc(gw * gh * 4);
+      // pixels next to this letter's own strokes (within `reach`)
+      const reach = Math.max(4, Math.round(w / 300));
+      const own = new Uint8Array(gw * gh);
+      for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) if (ids.has(label[(y0 + y) * w + (x0 + x)])) own[y * gw + x] = 1;
+      const near = dilateMask(own, gw, gh, reach);
+      const nearOwn = (src) => {
+        const xx = (src % w) - x0; const yy = Math.floor(src / w) - y0;
+        return xx >= 0 && yy >= 0 && xx < gw && yy < gh && near[yy * gw + xx] === 1;
+      };
       for (let y = 0; y < gh; y++) {
         for (let x = 0; x < gw; x++) {
           const src = (y0 + y) * w + (x0 + x);
-          if (!ids.has(label[src])) continue; // a neighbour's stroke
-          const a = Math.min(1, Math.max(0, (img.ink[src] - 0.1) / 0.3));
+          // a neighbour's stroke is left out; the light edge around this
+          // letter's strokes (too faint to be found as a piece) is kept
+          if (label[src] >= 0 && !ids.has(label[src])) continue;
+          if (label[src] < 0 && !nearOwn(src)) continue;
+          const a = Math.min(1, Math.max(0, (img.ink[src] - 0.05) / 0.3));
           const o = (y * gw + x) * 4;
           rgba[o] = img.rgb[src * 3]; rgba[o + 1] = img.rgb[src * 3 + 1]; rgba[o + 2] = img.rgb[src * 3 + 2];
           rgba[o + 3] = Math.round(a * 255);
@@ -359,7 +372,7 @@ function trimGlyph(g, scale, data, tw, th) {
   // trim to the ink (the crop had a margin): keeps letter spacing even
   let x0 = tw; let x1 = -1; let y0 = th; let y1 = -1;
   for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
-    if (data[(y * tw + x) * 4 + 3] > 6) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (data[(y * tw + x) * 4 + 3] > 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   }
   if (x1 < 0) { x0 = 0; y0 = 0; x1 = tw - 1; y1 = th - 1; }
   const cw = x1 - x0 + 1; const ch = y1 - y0 + 1;
@@ -684,8 +697,15 @@ function pack(glyphs, pad = 4, maxW = 2048) {
  * Writes `<name>.fnt` + `<name>.png` into dir.
  * @param {Map<string, {w,h,data,rise}>} map
  */
+const CLEAR = 4; // clear pixels around each letter in the atlas: shrunk on a phone, its edges stay soft, never sliced
+
 export async function writeFont(dir, name, map, m) {
-  const glyphs = [...map.values()];
+  const glyphs = [...map.values()].map((g) => {
+    const w = g.w + 2 * CLEAR; const h = g.h + 2 * CLEAR;
+    const data = Buffer.alloc(w * h * 4);
+    for (let y = 0; y < g.h; y++) g.data.copy(data, ((y + CLEAR) * w + CLEAR) * 4, y * g.w * 4, (y + 1) * g.w * 4);
+    return { ...g, w, h, data, rise: g.rise + CLEAR, inkW: g.w };
+  });
   const { width, height } = pack(glyphs);
   const atlas = await sharp({ create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite(glyphs.map((g) => ({ input: g.data, raw: { width: g.w, height: g.h, channels: 4 }, left: g.ax, top: g.ay })))
@@ -708,7 +728,7 @@ export async function writeFont(dir, name, map, m) {
     for (let y = 0; y < lineRow; y++) for (let x = 0; x < g.w; x++) {
       if (g.data[(y * g.w + x) * 4 + 3] > 60) { if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; }
     }
-    if (bx1 < 0 || bx1 - bx0 < g.w * 0.35) { bx0 = 0; bx1 = g.w - 1; }
+    if (bx1 < 0 || bx1 - bx0 < (g.w - 2 * CLEAR) * 0.35) { bx0 = CLEAR; bx1 = g.w - 1 - CLEAR; }   // the ink, not its clear border
     const xoff = m.side - bx0;
     const adv = (bx1 - bx0 + 1) + 2 * m.side;
     lines.push(`char id=${g.ch.codePointAt(0)} x=${g.ax} y=${g.ay} width=${g.w} height=${g.h} xoffset=${xoff} yoffset=${base - g.rise} xadvance=${adv} page=0 chnl=15`);
