@@ -266,24 +266,24 @@ function thickness(g) {
 }
 
 /** Scales one glyph and turns it white (mask) or keeps and brightens its colour. */
-async function finishGlyph(g, scale, { mode, bold = 0, condense = 1, edge = null }) {
+async function finishGlyph(g, scale, { mode, bold = 0, condense = 1, edge = null, soft = 1.1 }) {
   const tw = Math.max(1, Math.round(g.w * scale * condense)); const th = Math.max(1, Math.round(g.h * scale));
   let { data } = await sharp(g.rgba, { raw: { width: g.w, height: g.h, channels: 4 } })
     .resize(tw, th, { kernel: 'lanczos3' }).raw().toBuffer({ resolveWithObject: true });
   data = Buffer.from(data);
-  if (edge) {
-    // room around the letter for its edge
-    const pad = edge.px + 1;
-    const big = Buffer.alloc((tw + 2 * pad) * (th + 2 * pad) * 4);
-    for (let y = 0; y < th; y++) data.copy(big, ((y + pad) * (tw + 2 * pad) + pad) * 4, y * tw * 4, (y + 1) * tw * 4);
-    data = big;
-    g = { ...g, top: g.top - pad / scale };
-  }
-  const W = edge ? tw + 2 * (edge.px + 1) : tw; const H = edge ? th + 2 * (edge.px + 1) : th;
+  // room around the letter for what grows: thicker strokes, the soft edge and
+  // the dark edge (without it the strokes were cut off at the letter's box)
+  const pad = (edge ? edge.px : 0) + bold + Math.ceil(soft * 3) + 2;
+  const W = tw + 2 * pad; const H = th + 2 * pad;
+  const big = Buffer.alloc(W * H * 4);
+  for (let y = 0; y < th; y++) data.copy(big, ((y + pad) * W + pad) * 4, y * tw * 4, (y + 1) * tw * 4);
+  data = big;
+  g = { ...g, top: g.top - pad / scale };
   if (bold) data = growAlpha(data, W, H, bold);
+  if (soft) data = await softEdges(data, W, H, soft);
   const fill = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) fill[i] = data[i * 4 + 3];
-  const ring = edge ? growAlpha(Buffer.from(data), W, H, edge.px) : null;
+  const ring = edge ? await softEdges(growAlpha(Buffer.from(data), W, H, edge.px), W, H, soft) : null;
   for (let i = 0; i < W * H; i++) {
     if (mode === 'mask') {
       if (edge) {
@@ -305,11 +305,25 @@ async function finishGlyph(g, scale, { mode, bold = 0, condense = 1, edge = null
   return trimGlyph(g, scale, data, W, H);
 }
 
+/** Rounder, softer stroke edges: the alpha is blurred a little and firmed up again. */
+async function softEdges(data, w, h, sigma) {
+  const alpha = Buffer.alloc(w * h);
+  for (let i = 0; i < w * h; i++) alpha[i] = data[i * 4 + 3];
+  const blurred = await sharp(alpha, { raw: { width: w, height: h, channels: 1 } }).blur(Math.max(0.3, sigma)).extractChannel(0).raw().toBuffer();
+  if (blurred.length !== w * h) throw new Error(`softEdges: ${blurred.length} bytes for ${w}x${h}`);
+  for (let i = 0; i < w * h; i++) {
+    // firm the middle, keep a soft rim: smoothstep on the blurred alpha
+    const t = Math.min(1, Math.max(0, (blurred[i] / 255 - 0.12) / 0.6));
+    data[i * 4 + 3] = Math.round(255 * t * t * (3 - 2 * t));
+  }
+  return data;
+}
+
 function trimGlyph(g, scale, data, tw, th) {
   // trim to the ink (the crop had a margin): keeps letter spacing even
   let x0 = tw; let x1 = -1; let y0 = th; let y1 = -1;
   for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
-    if (data[(y * tw + x) * 4 + 3] > 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (data[(y * tw + x) * 4 + 3] > 6) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   }
   if (x1 < 0) { x0 = 0; y0 = 0; x1 = tw - 1; y1 = th - 1; }
   const cw = x1 - x0 + 1; const ch = y1 - y0 + 1;
@@ -331,23 +345,21 @@ function condenseFor(glyphs, sc, m) {
   return Math.max(0.72, Math.min(1, target / avg));
 }
 
+/** Thicker strokes, grown with a round brush; new pixels take the colour of the stroke they grow from. */
 function growAlpha(data, w, h, r) {
-  const a = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) a[i] = data[i * 4 + 3];
-  const tmp = new Uint8Array(w * h);
+  const src = Buffer.from(data);
+  const offs = [];
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r + r * 0.6) offs.push([dx, dy]);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let m = 0;
-    for (let k = -r; k <= r; k++) { const xx = x + k; if (xx >= 0 && xx < w && a[y * w + xx] > m) m = a[y * w + xx]; }
-    tmp[y * w + x] = m;
-  }
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let m = 0;
-    for (let k = -r; k <= r; k++) { const yy = y + k; if (yy >= 0 && yy < h && tmp[yy * w + x] > m) m = tmp[yy * w + x]; }
     const i = y * w + x;
-    if (m > data[i * 4 + 3]) {
-      // colour of the grown edge: copy the nearest coloured pixel's colour
-      data[i * 4 + 3] = m;
+    let best = src[i * 4 + 3]; let from = i;
+    for (const [dx, dy] of offs) {
+      const xx = x + dx; const yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+      const j = yy * w + xx;
+      if (src[j * 4 + 3] > best) { best = src[j * 4 + 3]; from = j; }
     }
+    if (from !== i) { data[i * 4] = src[from * 4]; data[i * 4 + 1] = src[from * 4 + 1]; data[i * 4 + 2] = src[from * 4 + 2]; data[i * 4 + 3] = best; }
   }
   return data;
 }

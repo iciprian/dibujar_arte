@@ -63,14 +63,14 @@ const r = await buildFonts({
   icons: Object.fromEntries(['star', 'checkmark', 'play'].map((n) => [n, path.join(project.out, `icons/${n}.png`)])),
   fonts: [
     // everyday text: the grey letters, white so the game colours them
-    { name: 'hand', mode: 'mask', sets: { upper: 'grey', lower: 'grey', punct: 'grey' }, extra: ['sym'] },
+    { name: 'hand', mode: 'mask', bold: 2, sets: { upper: 'grey', lower: 'grey', punct: 'grey' }, extra: ['sym'] },
     // buttons and headings: the same letters with thicker strokes
-    { name: 'hand_bold', mode: 'mask', bold: 3, sets: { upper: 'grey', lower: 'grey', punct: 'grey' }, extra: ['sym'] },
+    { name: 'hand_bold', mode: 'mask', bold: 5, sets: { upper: 'grey', lower: 'grey', punct: 'grey' }, extra: ['sym'] },
     // white titles: thick strokes with a dark edge, so they read on light
     // backgrounds (Godot cannot outline a drawn font)
-    { name: 'hand_outlined', mode: 'mask', bold: 3, edge: { px: 9, rgb: [44, 51, 80], alpha: 0.9 }, sets: { upper: 'grey', lower: 'grey', punct: 'grey' }, extra: ['sym'] },
+    { name: 'hand_outlined', mode: 'mask', bold: 5, edge: { px: 9, rgb: [44, 51, 80], alpha: 0.9 }, sets: { upper: 'grey', lower: 'grey', punct: 'grey' }, extra: ['sym'] },
     // emphasis: blue capitals, red small letters, in their own colours
-    { name: 'hand_color', mode: 'colour', sets: { upper: 'blue', lower: 'red', punct: 'blue' } },
+    { name: 'hand_color', mode: 'colour', bold: 1, sets: { upper: 'blue', lower: 'red', punct: 'blue' } },
   ],
 });
 if (r.problems.length) {
