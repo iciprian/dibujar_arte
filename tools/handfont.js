@@ -54,14 +54,17 @@ const SYMBOLS = {
 
 // a better ó, drawn on its own
 const OACUTE = { photo: '1795014966353.jpg', rowMode: 'gaps', rows: [{ set: 'oo', kind: 'lower', chars: 'ó' }] };
-// the special letters: green bubble capitals for words that stand out
+// the special letters: green bubble capitals for words that stand out, with
+// their own ¡ ! ?, a tilde (for Ñ) and an accent (for Á É Í Ó Ú); photographed
+// sideways. (˜ and ´ name the drawn tilde and accent; they are not kept.)
 const FUN = {
-  photo: '1795014966342.jpg',
+  photo: '1795015766430.jpg',
+  rotate: 270,
   rows: [
     { set: 'fun', kind: 'upper', chars: 'ABCDEFGH' },
-    { set: 'fun', kind: 'upper', chars: 'IJKLMNO' },
-    { set: 'fun', kind: 'upper', chars: 'PQRSTUV' },
-    { set: 'fun', kind: 'upper', chars: 'WXYZ' },
+    { set: 'fun', kind: 'upper', chars: 'IJKLMNO˜' },
+    { set: 'fun', kind: 'upper', chars: 'PQRSTUV´' },
+    { set: 'fun', kind: 'upper', chars: 'WXYZ¡!?' },
   ],
 };
 
@@ -69,7 +72,7 @@ const r = await buildFonts({
   sheets: [
     { photo: path.join(project.photos, SHEET.photo), rows: SHEET.rows },
     { photo: path.join(project.photos, OACUTE.photo), rows: OACUTE.rows, rowMode: OACUTE.rowMode },
-    { photo: path.join(project.photos, FUN.photo), rows: FUN.rows },
+    { photo: path.join(project.photos, FUN.photo), rows: FUN.rows, rotate: FUN.rotate },
     { photo: path.join(project.photos, SYMBOLS.photo), rows: SYMBOLS.rows, rowMode: SYMBOLS.rowMode },
   ],
   size: 128,
@@ -88,7 +91,7 @@ const r = await buildFonts({
     { name: 'hand_color', mode: 'colour', bold: 1, sets: { upper: 'blue', lower: 'red', punct: 'blue' } },
     // special words ([fun] in texts): green bubble capitals in their own colours;
     // small letters use the same capitals; accents and Ñ from the blue strokes
-    { name: 'hand_fun', mode: 'colour', bold: 1, sets: { upper: 'fun' }, strokesFrom: 'blue', lowerAsUpper: true, lettersOnly: true },
+    { name: 'hand_fun', mode: 'colour', bold: 1, sets: { upper: 'fun', punct: 'fun' }, strokesFrom: 'blue', lowerAsUpper: true, lettersOnly: true },
   ],
 });
 if (r.problems.length) {

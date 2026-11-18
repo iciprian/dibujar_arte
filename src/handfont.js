@@ -19,7 +19,7 @@ import { connectedComponents, dilateMask, inkImage } from './drawing.js';
 
 const DESCENDERS = new Set([...'gjpqy¿¡,;']);
 // marks that float above the writing line (placed by the line, not their bottom)
-const FLOATING = new Set([...'\'"-·+=×¬→↔⇒^']);
+const FLOATING = new Set([...'\'"-·+=×¬→↔⇒^˜´']);
 const XHEIGHT = new Set([...'acemnorsuvwxz']); // small letters with no ascender or descender
 
 /** Font metrics in atlas pixels for a font of `size` px. */
@@ -461,9 +461,15 @@ function meanColour(glyphs) {
  */
 async function synthesize(map, m, { stroke, dot, upperColour, lowerColour }) {
   const add = (g) => { if (!map.has(g.ch)) map.set(g.ch, g); };
-  // the accent: the one drawn over á if there is one, else a turned stroke
+  // the accent: drawn on its own (´), else the one over a drawn á, else a turned stroke
   const drawnA = map.get('á');
-  const accent = (drawnA && await accentOf(drawnA, m)) || await resizeG(await rasterRotate(stroke, 38), m.size * 0.13, m.size * 0.2);
+  const accent = map.get('´') || (drawnA && await accentOf(drawnA, m)) || await resizeG(await rasterRotate(stroke, 38), m.size * 0.13, m.size * 0.2);
+  // ¿ is a ? turned upside down, when only the ? was drawn
+  const q = map.get('?');
+  if (q && !map.has('¿')) {
+    const r = await rasterRotate(q, 180);
+    add({ ch: '¿', ...r, rise: Math.round(m.xH * 0.9) });
+  }
   const smallDot = await resizeG(dot, dot.w * 0.85, dot.h * 0.85);
   const accFor = (base) => (/[A-ZÁÉÍÓÚÑ]/.test(base.ch) ? (upperColour ? tint(accent, upperColour) : accent) : (lowerColour ? tint(accent, lowerColour) : accent));
   const dotFor = (base) => (/[A-Z]/.test(base.ch) ? (upperColour ? tint(smallDot, upperColour) : smallDot) : (lowerColour ? tint(smallDot, lowerColour) : smallDot));
@@ -482,6 +488,12 @@ async function synthesize(map, m, { stroke, dot, upperColour, lowerColour }) {
     add(compose('í', [{ g: stem, x: 0, y: stem.rise }, { g: acc, x: (stem.w - acc.w) / 2 + stem.w * 0.1, y: stem.rise + m.size * 0.06 + acc.h }]));
   }
   const N = map.get('N');
+  const drawnTilde = map.get('˜');
+  if (N && drawnTilde && !map.has('Ñ')) {
+    const tw = Math.min(drawnTilde.w, N.w * 0.8);
+    const t2 = await resizeG(drawnTilde, tw, drawnTilde.h * (tw / drawnTilde.w));
+    add(compose('Ñ', [{ g: N, x: 0, y: N.rise }, { g: t2, x: (N.w - t2.w) / 2, y: N.rise + m.size * 0.05 + t2.h }]));
+  }
   if (N && !map.has('Ñ')) {
     // a tilde: a short wavy stroke made of two turned strokes
     const a1 = await resizeG(await rasterRotate(stroke, 70), m.size * 0.12, m.size * 0.07);
@@ -714,7 +726,9 @@ export async function buildFonts(cfg) {
   const sheets = cfg.sheets || [{ photo: cfg.photo, rows: cfg.rows }];
   const glyphs = []; const problems = [];
   for (const sh of sheets) {
-    const r = await readSheet(sh.photo, sh.rows, { rowMode: sh.rowMode });
+    // a sheet photographed sideways is turned upright first
+    const photo = sh.rotate ? await sharp(sh.photo).rotate(sh.rotate).jpeg({ quality: 95 }).toBuffer() : sh.photo;
+    const r = await readSheet(photo, sh.rows, { rowMode: sh.rowMode });
     glyphs.push(...r.glyphs);
     problems.push(...r.problems.map((p) => `${path.basename(sh.photo)}: ${p}`));
   }
@@ -787,7 +801,7 @@ export async function buildFonts(cfg) {
     }
     // letters only (a font for special words): no made-up signs or punctuation
     if (font.lettersOnly) {
-      for (const ch of [...map.keys()]) if (!/\p{L}/u.test(ch)) map.delete(ch);
+      for (const ch of [...map.keys()]) if (!/\p{L}/u.test(ch) && !'¡!¿?'.includes(ch)) map.delete(ch);
     }
     // a font of capitals only: small letters are the same capitals
     if (font.lowerAsUpper) {
