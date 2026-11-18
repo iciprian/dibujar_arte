@@ -124,6 +124,10 @@ export const TONES = {
   'backgrounds/game.png': { keep: 0.4, lift: 10, blur: 1.2 },
 };
 
+// Panels and buttons carry text: they must be solid, even if the drawn
+// outline has a gap (which would otherwise leave the inside transparent).
+const SOLID = new Set(['ui/panel.png', 'ui/button.png', 'ui/button_main.png', 'ui/button_blue.png', 'ui/button_green.png']);
+
 // snow tiles: whiter, so the snow island stands out from the pale sea
 const SNOW = { keep: 0.5, lift: 30 };
 
@@ -178,7 +182,11 @@ export async function buildPicture(project, pic) {
     return sharp({ create: { width: size * entry.frames, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
       .composite(strip).png().toBuffer();
   }
-  const png = await fitToCanvas(clean, { width: entry.width, height: entry.height, ...how });
+  let png = await fitToCanvas(clean, { width: entry.width, height: entry.height, ...how });
+  if (SOLID.has(pic.file)) {
+    // text goes on these: never see-through, the gaps become white paper
+    png = await sharp(png).flatten({ background: '#fffdf8' }).ensureAlpha().png().toBuffer();
+  }
   const tone = pic.tone ?? TONES[pic.file] ?? (pic.file.startsWith('map/terrain_snow_') ? SNOW : null);
   return tone ? retone(png, tone) : png;
 }
